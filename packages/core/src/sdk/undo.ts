@@ -37,7 +37,7 @@ import { judgeConflict, restoreBefore } from './inverse.js';
 import { finishRun, newId, record, startRun, startStep } from './recorder.js';
 import { actionFlags, type ToolRegistry } from './registry.js';
 import { type Candidate, resolveAction } from './resolve.js';
-import { type Trace, traceOf } from './trace.js';
+import { type QueryTrace, traceOf } from './trace.js';
 
 export const BACKTRACK_AGENT = 'backtrack';
 
@@ -50,7 +50,7 @@ export interface PlanRequest {
 
 export interface PlanResult {
   outcome: UndoOutcome;
-  traces: Trace[];
+  traces: QueryTrace[];
 }
 
 /** How an undo step for this action is carried out, from its tool definition when known. */
@@ -70,7 +70,7 @@ export async function planUndo(
 ): Promise<PlanResult> {
   const depth = req.depth ?? 5;
   const resolution = await resolveAction(g, req);
-  const traces: Trace[] = [resolution.trace];
+  const traces: QueryTrace[] = [resolution.trace];
   const root = resolution.action;
 
   if (!root) {

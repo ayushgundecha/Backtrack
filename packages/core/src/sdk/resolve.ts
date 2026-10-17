@@ -9,7 +9,7 @@
 import type { TenantGraph } from '../graph/client.js';
 import { parseJson } from '../graph/cypher.js';
 import { type ActionRow, listActions } from '../graph/queries.js';
-import { type Trace, traceOf } from './trace.js';
+import { type QueryTrace, traceOf } from './trace.js';
 
 export interface Candidate {
   id: string;
@@ -23,7 +23,7 @@ export interface Resolution {
   action: ActionRow | null;
   /** Up to three closest actions, best first (shown on the "unknown action" card). */
   candidates: Candidate[];
-  trace: Trace;
+  trace: QueryTrace;
 }
 
 const STOPWORDS = new Set(

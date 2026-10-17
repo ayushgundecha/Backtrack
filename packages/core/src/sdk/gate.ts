@@ -9,7 +9,7 @@
 import type { GateDecision } from '../contracts/types.js';
 import type { TenantGraph } from '../graph/client.js';
 import { approvalState, decideAction, q4LockIn, q5Policies } from '../graph/queries.js';
-import type { Trace } from './trace.js';
+import type { QueryTrace } from './trace.js';
 import { traceOf } from './trace.js';
 
 export interface GateInput {
@@ -22,7 +22,7 @@ export interface GateInput {
 
 export interface PolicyVerdict {
   decision: GateDecision;
-  traces: Trace[];
+  traces: QueryTrace[];
 }
 
 /** Q5 only: is the call blocked, or does a policy ask for confirmation? */
