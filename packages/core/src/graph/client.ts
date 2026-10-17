@@ -99,6 +99,9 @@ export async function closeDb(): Promise<void> {
   await cached?.db.close().catch(() => undefined);
 }
 
+/** FalkorDB's reply when a read-only command or GRAPH.DELETE targets a graph that does not exist. */
+const isMissingGraph = (err: unknown) => /Invalid graph operation on empty key/i.test(String(err));
+
 /** node-redis rejects with ClientClosedError before sending anything when the socket is gone. */
 const isClientClosed = (err: unknown) =>
   /client is closed|ClientClosedError/i.test(String((err as Error)?.message ?? err));
@@ -118,9 +121,17 @@ export class TenantGraph {
     this.name = graphName(tenant);
   }
 
-  /** GRAPH.RO_QUERY: use for every agent-facing read. The server rejects writes here. */
+  /**
+   * GRAPH.RO_QUERY: use for every agent-facing read. The server rejects writes here.
+   * A tenant whose graph does not exist yet reads as empty instead of failing.
+   */
   read<T = Record<string, unknown>>(cypher: string, params: Params = {}): Promise<QueryResult<T>> {
-    return this.run(cypher, params, (graph) => graph.roQuery<T>(cypher, { params }));
+    return this.run(cypher, params, (graph) =>
+      graph.roQuery<T>(cypher, { params }).catch((err: unknown) => {
+        if (isMissingGraph(err)) return { data: [] as T[] };
+        throw err;
+      }),
+    );
   }
 
   /** GRAPH.QUERY: writes. Also returns evidence so the recorder can emit a trace. */
@@ -176,7 +187,7 @@ export class TenantGraph {
   /** GRAPH.DELETE; a graph that does not exist yet is not an error. */
   async drop(): Promise<void> {
     await (await this.graph()).delete().catch((err: unknown) => {
-      if (!/empty key|Invalid graph operation on empty key/i.test(String(err))) throw err;
+      if (!isMissingGraph(err)) throw err;
     });
   }
 

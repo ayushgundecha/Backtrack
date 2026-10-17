@@ -145,6 +145,84 @@ try {
   log('UNIQUE enforcement', `OK, rejected: ${(e as Error).message}`);
 }
 
+// 9. Single-statement record pattern (BT-021). The recorder writes one action in one statement,
+// so it relies on: FOREACH over range() with list-parameter indexing inside MERGE/CREATE; a
+// sentinel UNWIND row so empty lists keep the statement alive; OPTIONAL MATCH on a null property
+// (the sentinel) matching nothing; ORDER BY + head(collect()) for "latest writer"; FOREACH over a
+// one-element node list for conditional MERGE of a relationship; CASE inside SET.
+await g.write(
+  `UNWIND range(1, 3) AS i
+   CREATE (:Entity {type: 'ticket', key: 'tkt_' + toString(i), state: 'null'})`,
+);
+const rec = await g.write(
+  `MATCH (c:Counter {id:'seq'}) SET c.n = c.n + 1
+   WITH c.n AS seq
+   CREATE (a:Action {id: $id, seq: seq, status: 'done', kind: 'do'})
+   WITH a, seq
+   FOREACH (i IN range(0, size($types) - 1) |
+     MERGE (e:Entity {type: $types[i], key: $keys[i]})
+     SET e.state = $states[i]
+     CREATE (a)-[:CAUSED]->(:Effect {id: $id + '_' + toString(i)})-[:ON]->(e))
+   WITH a, seq
+   UNWIND range(0, size($depTypes)) AS i
+   OPTIONAL MATCH (e:Entity {type: $depTypes[i], key: $depKeys[i]})<-[:ON]-(:Effect)<-[:CAUSED]-(w:Action)
+   WHERE w.seq < seq AND w.status = 'done'
+   WITH a, seq, i, w ORDER BY w.seq DESC
+   WITH a, seq, i, head(collect(w)) AS latest
+   WITH a, seq, latest, collect($depVia[i]) AS vias
+   FOREACH (w IN CASE WHEN latest IS NULL THEN [] ELSE [latest] END |
+     MERGE (a)-[d:DEPENDS_ON]->(w)
+     SET d.weight = 1, d.via = CASE WHEN 'read' IN vias THEN 'read' ELSE 'write' END)
+   WITH seq, collect(latest.id) AS deps
+   RETURN seq, deps`,
+  {
+    id: 'a4',
+    types: ['ticket', 'ticket'],
+    keys: ['tkt_1', 'tkt_9'],
+    states: ['{"a":1}', '{"b":2}'],
+    depTypes: [],
+    depKeys: [],
+    depVia: [],
+  },
+);
+log('record a4 (writes tkt_1 and new tkt_9; no deps; empty lists survive)', rec.rows);
+const rec2 = await g.write(
+  `MATCH (c:Counter {id:'seq'}) SET c.n = c.n + 1
+   WITH c.n AS seq
+   CREATE (a:Action {id: $id, seq: seq, status: 'done', kind: 'do'})
+   WITH a, seq
+   UNWIND range(0, size($depTypes)) AS i
+   OPTIONAL MATCH (e:Entity {type: $depTypes[i], key: $depKeys[i]})<-[:ON]-(:Effect)<-[:CAUSED]-(w:Action)
+   WHERE w.seq < seq AND w.status = 'done'
+   WITH a, seq, i, w ORDER BY w.seq DESC
+   WITH a, seq, i, head(collect(w)) AS latest
+   WITH a, seq, latest, collect($depVia[i]) AS vias
+   FOREACH (w IN CASE WHEN latest IS NULL THEN [] ELSE [latest] END |
+     MERGE (a)-[d:DEPENDS_ON]->(w)
+     SET d.weight = 1, d.via = CASE WHEN 'read' IN vias THEN 'read' ELSE 'write' END)
+   WITH seq, collect(latest.id) AS deps
+   RETURN seq, deps`,
+  {
+    id: 'a5',
+    depTypes: ['ticket', 'ticket', 'ticket'],
+    depKeys: ['tkt_1', 'tkt_9', 'tkt_2'],
+    depVia: ['read', 'write', 'read'],
+  },
+);
+log('record a5 (reads tkt_1, writes tkt_9 → one edge to a4, via read)', rec2.rows);
+log(
+  'a5 dependency edges',
+  (
+    await g.read(
+      `MATCH (:Action {id:'a5'})-[d:DEPENDS_ON]->(w:Action) RETURN w.id AS writer, d.via AS via, d.weight AS weight`,
+    )
+  ).rows,
+);
+log(
+  'tkt_9 created by MERGE inside FOREACH with indexed params',
+  (await g.read(`MATCH (e:Entity {key:'tkt_9'}) RETURN e.state AS state`)).rows,
+);
+
 await g.drop();
 await closeDb();
 console.log('\nspike complete');

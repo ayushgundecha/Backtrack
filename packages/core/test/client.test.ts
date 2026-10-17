@@ -28,9 +28,15 @@ describe('graph client', () => {
   });
 
   it('read() goes through GRAPH.RO_QUERY, so the server refuses writes', async () => {
+    await g.write("CREATE (:Action {id: 'exists'})");
     await expect(g.read("CREATE (:Action {id: 'nope'})")).rejects.toThrow();
     const { rows } = await g.write<{ n: number }>('MATCH (a:Action) RETURN count(a) AS n');
-    expect(rows[0]?.n).toBe(0);
+    expect(rows[0]?.n).toBe(1);
+  });
+
+  it('reads a tenant whose graph does not exist yet as empty', async () => {
+    const { rows } = await g.read('MATCH (n) RETURN n');
+    expect(rows).toEqual([]);
   });
 
   it('reuses one client across calls', async () => {

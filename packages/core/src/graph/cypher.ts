@@ -26,16 +26,33 @@ export function depth(n: number): Depth {
 const isDepth = (v: unknown): v is Depth =>
   typeof v === 'object' && v !== null && (v as Partial<Depth>)[DEPTH] === true;
 
+const FRAGMENT = Symbol('fragment');
+/** A reusable piece of query text written in this codebase (never built from input). */
+export interface Fragment {
+  readonly [FRAGMENT]: true;
+  readonly text: string;
+}
+
+/** Only call with a string literal: fragments are spliced into query text verbatim. */
+export function fragment(text: string): Fragment {
+  return { [FRAGMENT]: true, text };
+}
+
+const isFragment = (v: unknown): v is Fragment =>
+  typeof v === 'object' && v !== null && (v as Partial<Fragment>)[FRAGMENT] === true;
+
 /**
- * Tagged template for query text. Interpolating anything but a `Depth` throws, so a user- or
- * model-supplied string can never end up inside the Cypher; it has to travel as a parameter.
+ * Tagged template for query text. Interpolating anything but a `Depth` or a code-defined
+ * `Fragment` throws, so a user- or model-supplied string can never end up inside the Cypher;
+ * it has to travel as a parameter.
  */
-export function cypher(strings: TemplateStringsArray, ...values: Depth[]): string {
+export function cypher(strings: TemplateStringsArray, ...values: Array<Depth | Fragment>): string {
   return strings.reduce((out, part, i) => {
     if (i === 0) return part;
     const v: unknown = values[i - 1];
-    if (!isDepth(v)) throw new TypeError('cypher`…`: only depth() literals may be interpolated');
-    return `${out}${v.value}${part}`;
+    if (isDepth(v)) return `${out}${v.value}${part}`;
+    if (isFragment(v)) return `${out}${v.text}${part}`;
+    throw new TypeError('cypher`…`: only depth() literals and fragments may be interpolated');
   }, '');
 }
 
