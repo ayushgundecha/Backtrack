@@ -211,6 +211,19 @@ RETURN m.bootstrapped AS bootstrapped, m.seeded_at AS seededAt, c.n AS seq;
 // answers: which agents are registered in this tenant (policies and runs may only name these)?
 MATCH (a:Agent) RETURN a.id AS id, a.name AS name ORDER BY id;
 
+// S9 · Claim one LLM call from the daily budget (write)
+// answers: may we make one more model request today? (counts it if so; one statement, so concurrent runs cannot overspend)
+MERGE (m:Meta {id: 'meta'})
+WITH m, CASE WHEN m.llm_calls_day = $day THEN coalesce(m.llm_calls_count, 0) ELSE 0 END AS used
+WITH m, used, used < $limit AS ok
+SET m.llm_calls_day = $day, m.llm_calls_count = CASE WHEN ok THEN used + 1 ELSE used END
+RETURN ok, CASE WHEN ok THEN used + 1 ELSE used END AS used;
+
+// S10 · LLM calls used today (read)
+// answers: how many model requests has the live mode made today?
+OPTIONAL MATCH (m:Meta {id: 'meta'})
+RETURN CASE WHEN m.llm_calls_day = $day THEN coalesce(m.llm_calls_count, 0) ELSE 0 END AS used;
+
 // ==============================================================================================
 // World (Entity.state)
 // ==============================================================================================

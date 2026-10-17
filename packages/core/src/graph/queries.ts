@@ -141,6 +141,28 @@ export const listAgents = define<Record<string, never>, { id: string; name: stri
   text: `MATCH (a:Agent) RETURN a.id AS id, a.name AS name ORDER BY id`,
 });
 
+export const claimLlmCall = define<{ day: string; limit: number }, { ok: boolean; used: number }>({
+  id: 'S9',
+  title: 'Claim one LLM call from the daily budget',
+  answers:
+    'may we make one more model request today? (counts it if so; one statement, so concurrent runs cannot overspend)',
+  mode: 'write',
+  text: `MERGE (m:Meta {id: 'meta'})
+WITH m, CASE WHEN m.llm_calls_day = $day THEN coalesce(m.llm_calls_count, 0) ELSE 0 END AS used
+WITH m, used, used < $limit AS ok
+SET m.llm_calls_day = $day, m.llm_calls_count = CASE WHEN ok THEN used + 1 ELSE used END
+RETURN ok, CASE WHEN ok THEN used + 1 ELSE used END AS used`,
+});
+
+export const llmUsage = define<{ day: string }, { used: number }>({
+  id: 'S10',
+  title: 'LLM calls used today',
+  answers: 'how many model requests has the live mode made today?',
+  mode: 'read',
+  text: `OPTIONAL MATCH (m:Meta {id: 'meta'})
+RETURN CASE WHEN m.llm_calls_day = $day THEN coalesce(m.llm_calls_count, 0) ELSE 0 END AS used`,
+});
+
 // ---------------------------------------------------------------------------------------------
 // W — the world (Entity.state)
 // ---------------------------------------------------------------------------------------------
