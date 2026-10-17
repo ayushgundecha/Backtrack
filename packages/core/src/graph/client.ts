@@ -2,11 +2,14 @@
  * FalkorDB connection and query wrapper.
  *
  * Design notes
- * - One client per process, cached on globalThis so serverless invocations reuse the TCP connection.
- * - Every read returns `QueryResult` (rows + the Cypher + params + ms) so the UI can show the evidence
- *   behind each claim. Writes go through `write()`, reads through `read()` (GRAPH.RO_QUERY).
+ * - One client per process, cached on globalThis so serverless invocations (and Next.js dev
+ *   reloads) reuse the TCP connection instead of opening one per request.
+ * - A cached client that has been idle is pinged before use; a failed ping, a connection
+ *   `error` event or a "client is closed" error drops it and the next call reconnects.
+ * - Every call returns `QueryResult` (rows + the Cypher + params + ms) so the UI can show the
+ *   evidence behind each claim. Reads go through `read()` (GRAPH.RO_QUERY), writes through `write()`.
  * - Nested objects are not reliable as Cypher parameters, so callers pass JSON *strings* for
- *   `state`, `args`, `before`, `after` and parse them on the way out.
+ *   `state`, `args`, `before`, `after` (see `toParams` in cypher.ts) and parse them on the way out.
  */
 import { ConstraintType, EntityType, FalkorDB, type Graph } from 'falkordb';
 import type { QueryResult } from '../contracts/types.js';
@@ -32,36 +35,73 @@ export function configFromEnv(env: NodeJS.ProcessEnv = process.env): FalkorConfi
 /** Graph name for a tenant. A tenant is a graph, never a WHERE filter. */
 export const graphName = (tenant: string): string => `bt:${tenant}`;
 
-type Cached = { db: FalkorDB; key: string };
+/** A cached client that has not been used for this long is pinged before the next call. */
+export const PING_AFTER_IDLE_MS = 10_000;
+
+type Cached = { db: FalkorDB; key: string; lastOkAt: number };
 const g = globalThis as unknown as { __backtrackFalkor?: Cached };
 
+const keyOf = (c: FalkorConfig) => `${c.host}:${c.port}:${c.username ?? ''}`;
+
 export async function getDb(config: FalkorConfig = configFromEnv()): Promise<FalkorDB> {
-  const key = `${config.host}:${config.port}:${config.username ?? ''}`;
-  if (g.__backtrackFalkor?.key === key) {
-    return g.__backtrackFalkor.db;
+  const key = keyOf(config);
+  const cached = g.__backtrackFalkor;
+  if (cached?.key === key) {
+    if (Date.now() - cached.lastOkAt < PING_AFTER_IDLE_MS) return cached.db;
+    if (await ping(cached.db)) {
+      cached.lastOkAt = Date.now();
+      return cached.db;
+    }
+    forget(cached.db);
+  } else if (cached) {
+    // Different target (e.g. tests switching config): close the old client.
+    forget(cached.db);
+    await cached.db.close().catch(() => undefined);
   }
+  return connect(config, key);
+}
+
+async function connect(config: FalkorConfig, key: string): Promise<FalkorDB> {
   const db = await FalkorDB.connect({
-    socket: { host: config.host, port: config.port },
+    socket: { host: config.host, port: config.port, connectTimeout: 5_000 },
     username: config.username,
     password: config.password,
   });
   // node-redis emits 'error' on the connection; an unhandled one crashes the process.
-  (db as unknown as { on?: (e: string, cb: (err: unknown) => void) => void }).on?.(
-    'error',
-    (err) => {
-      console.error('[backtrack] falkordb connection error', err);
-      if (g.__backtrackFalkor?.db === db) g.__backtrackFalkor = undefined;
-    },
-  );
-  g.__backtrackFalkor = { db, key };
+  db.on('error', (err: unknown) => {
+    console.error('[backtrack] falkordb connection error', err);
+    forget(db);
+  });
+  g.__backtrackFalkor = { db, key, lastOkAt: Date.now() };
   return db;
+}
+
+/** True when the server answers PING on this client. */
+export async function ping(db: FalkorDB): Promise<boolean> {
+  try {
+    return (await (await db.connection).ping()) === 'PONG';
+  } catch {
+    return false;
+  }
+}
+
+function forget(db: FalkorDB): void {
+  if (g.__backtrackFalkor?.db === db) g.__backtrackFalkor = undefined;
+}
+
+function touch(db: FalkorDB): void {
+  if (g.__backtrackFalkor?.db === db) g.__backtrackFalkor.lastOkAt = Date.now();
 }
 
 export async function closeDb(): Promise<void> {
   const cached = g.__backtrackFalkor;
   g.__backtrackFalkor = undefined;
-  await cached?.db.close();
+  await cached?.db.close().catch(() => undefined);
 }
+
+/** node-redis rejects with ClientClosedError before sending anything when the socket is gone. */
+const isClientClosed = (err: unknown) =>
+  /client is closed|ClientClosedError/i.test(String((err as Error)?.message ?? err));
 
 export type Params = Record<
   string,
@@ -72,31 +112,25 @@ export type Params = Record<
 export class TenantGraph {
   readonly name: string;
   constructor(
-    readonly graph: Graph,
-    readonly db: FalkorDB,
     readonly tenant: string,
+    private readonly config: FalkorConfig = configFromEnv(),
   ) {
     this.name = graphName(tenant);
   }
 
-  /** GRAPH.RO_QUERY: use for every agent-facing read. */
-  async read<T = Record<string, unknown>>(
-    cypher: string,
-    params: Params = {},
-  ): Promise<QueryResult<T>> {
-    const t0 = performance.now();
-    const reply = await this.graph.roQuery<T>(cypher, { params });
-    return { rows: (reply.data ?? []) as T[], cypher, params, ms: round(performance.now() - t0) };
+  /** GRAPH.RO_QUERY: use for every agent-facing read. The server rejects writes here. */
+  read<T = Record<string, unknown>>(cypher: string, params: Params = {}): Promise<QueryResult<T>> {
+    return this.run(cypher, params, (graph) => graph.roQuery<T>(cypher, { params }));
   }
 
   /** GRAPH.QUERY: writes. Also returns evidence so the recorder can emit a trace. */
-  async write<T = Record<string, unknown>>(
-    cypher: string,
-    params: Params = {},
-  ): Promise<QueryResult<T>> {
-    const t0 = performance.now();
-    const reply = await this.graph.query<T>(cypher, { params });
-    return { rows: (reply.data ?? []) as T[], cypher, params, ms: round(performance.now() - t0) };
+  write<T = Record<string, unknown>>(cypher: string, params: Params = {}): Promise<QueryResult<T>> {
+    return this.run(cypher, params, (graph) => graph.query<T>(cypher, { params }));
+  }
+
+  /** The underlying falkordb Graph, for the few calls without a Cypher form (copy, constraints). */
+  async graph(): Promise<Graph> {
+    return (await getDb(this.config)).selectGraph(this.name);
   }
 
   /** Unique constraints need an exact-match index on the same properties first. */
@@ -106,7 +140,7 @@ export class TenantGraph {
     await this.write(`CREATE INDEX FOR (${alias}:${label}) ON (${propList})`).catch(
       swallowAlreadyExists,
     );
-    await this.graph
+    await (await this.graph())
       .constraintCreate(ConstraintType.UNIQUE, EntityType.NODE, label, ...props)
       .catch(swallowAlreadyExists);
   }
@@ -134,22 +168,46 @@ export class TenantGraph {
   }
 
   /** GRAPH.COPY: snapshot the tenant graph (used for undo rehearsal). */
-  async copyTo(destTenantOrName: string): Promise<string> {
-    const dest = destTenantOrName.startsWith('bt:')
-      ? destTenantOrName
-      : graphName(destTenantOrName);
-    await this.graph.copy(dest);
-    return dest;
+  async copyTo(destTenant: string): Promise<TenantGraph> {
+    await (await this.graph()).copy(graphName(destTenant));
+    return new TenantGraph(destTenant, this.config);
   }
 
+  /** GRAPH.DELETE; a graph that does not exist yet is not an error. */
   async drop(): Promise<void> {
-    await this.graph.delete().catch(() => undefined);
+    await (await this.graph()).delete().catch((err: unknown) => {
+      if (!/empty key|Invalid graph operation on empty key/i.test(String(err))) throw err;
+    });
+  }
+
+  /**
+   * Runs one call with the cached client. If the client turned out to be closed, reconnect and
+   * retry once: ClientClosedError is raised before the command is sent, so a retry cannot apply
+   * a write twice. Other errors (including mid-flight socket errors) are surfaced unchanged.
+   */
+  private async run<T>(
+    cypher: string,
+    params: Params,
+    call: (graph: Graph) => Promise<{ data?: T[] }>,
+  ): Promise<QueryResult<T>> {
+    const t0 = performance.now();
+    let db = await getDb(this.config);
+    let reply: { data?: T[] };
+    try {
+      reply = await call(db.selectGraph(this.name));
+    } catch (err) {
+      if (!isClientClosed(err)) throw err;
+      forget(db);
+      db = await getDb(this.config);
+      reply = await call(db.selectGraph(this.name));
+    }
+    touch(db);
+    return { rows: (reply.data ?? []) as T[], cypher, params, ms: round(performance.now() - t0) };
   }
 }
 
-export async function openTenant(tenant: string, config?: FalkorConfig): Promise<TenantGraph> {
-  const db = await getDb(config);
-  return new TenantGraph(db.selectGraph(graphName(tenant)), db, tenant);
+export function openTenant(tenant: string, config?: FalkorConfig): TenantGraph {
+  return new TenantGraph(tenant, config);
 }
 
 export async function listGraphs(config?: FalkorConfig): Promise<string[]> {

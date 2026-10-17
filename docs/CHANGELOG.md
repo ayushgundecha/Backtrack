@@ -2,6 +2,7 @@
 
 One line per completed task, newest first. Format: `BT-0xx — what changed (how it was verified)`.
 
+- BT-010 — graph client pings idle connections, reconnects after a closed client; cypher.ts adds the depth-only tag, canonical JSON and toParams (`pnpm test`: client.test.ts, cypher.test.ts against bt:test)
 - BT-050 — CI runs lint, typecheck and test against a FalkorDB service container (green on main 9e00483)
 - BT-004 — FalkorDB spike proving constraints, params, traversal, algorithms, copy (`pnpm spike`; see docs/spike-results.md)
 - BT-003 — Frozen contracts (types, events, api, fixtures) and golden fixtures (`pnpm test`)

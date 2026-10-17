@@ -8,7 +8,7 @@ import { closeDb, listGraphs, openTenant } from '../src/graph/client.js';
 const log = (label: string, v: unknown) =>
   console.log(`\n== ${label}\n`, typeof v === 'string' ? v : JSON.stringify(v, null, 2));
 
-const g = await openTenant('spike');
+const g = openTenant('spike');
 await g.drop();
 
 // 1. Index → unique constraint → OPERATIONAL
@@ -124,13 +124,12 @@ log(
 );
 
 // 7. GRAPH.COPY → list → delete fork
-const forkName = await g.copyTo('spike:fork:1');
+const forkG = await g.copyTo('spike:fork:1');
 const graphs = await listGraphs();
 log(
-  `graphs after copy (${forkName})`,
+  `graphs after copy (${forkG.name})`,
   graphs.filter((n) => n.startsWith('bt:spike')),
 );
-const forkG = await openTenant('spike:fork:1');
 log('fork has the same actions', (await forkG.read(`MATCH (a:Action) RETURN count(a) AS n`)).rows);
 await forkG.drop();
 log(
