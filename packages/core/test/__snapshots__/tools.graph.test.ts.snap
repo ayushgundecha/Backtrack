@@ -175,6 +175,30 @@ exports[`graph tools > expose the catalogue from PLAN §6 with flat, stable sche
     "name": "recall",
   },
   {
+    "description": "How big undoing an action would be: how many actions depend on it within \`depth\` hops, how many of those are irreversible, and which entities they touched.",
+    "input": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "properties": {
+        "actionId": {
+          "description": "An action id from list_actions, e.g. act_ab12cd34",
+          "type": "string",
+        },
+        "depth": {
+          "default": 5,
+          "description": "Hops of DEPENDS_ON to follow",
+          "maximum": 10,
+          "minimum": 1,
+          "type": "integer",
+        },
+      },
+      "required": [
+        "actionId",
+      ],
+      "type": "object",
+    },
+    "name": "blast_radius",
+  },
+  {
     "description": "The actions the most other work rests on (PageRank over DEPENDS_ON). Undoing these has the widest consequences.",
     "input": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",

@@ -10,6 +10,7 @@
 import { z } from 'zod';
 import type { TenantGraph } from '../graph/client.js';
 import {
+  q3BlastRadius,
   q8LoadBearing,
   q9Hinges,
   q10Clusters,
@@ -203,6 +204,23 @@ export const recallTool = graphTool({
   },
 });
 
+export const blastRadiusTool = graphTool({
+  name: 'blast_radius',
+  description:
+    'How big undoing an action would be: how many actions depend on it within `depth` hops, how many of those are irreversible, and which entities they touched.',
+  input: z.object({
+    actionId,
+    depth: z.number().int().min(1).max(10).default(5).describe('Hops of DEPENDS_ON to follow'),
+  }),
+  run: async (ctx, { actionId: id, depth }) => {
+    const res = await q3BlastRadius(ctx.g, { actionId: id }, { depth });
+    const row = res.rows[0];
+    // The root itself always counts, so zero actions means the id is not in the graph.
+    if (!row?.actions) throw new GraphToolError(`No action ${id}; call list_actions for valid ids`);
+    return { result: { ...row, depth }, traces: [traceOf('Q3', res)] };
+  },
+});
+
 export const loadBearingTool = graphTool({
   name: 'load_bearing',
   description:
@@ -295,6 +313,7 @@ export const graphTools: GraphTool[] = [
   explainActionTool,
   entityHistoryTool,
   recallTool,
+  blastRadiusTool,
   loadBearingTool,
   hingeActionsTool,
   independentClustersTool,

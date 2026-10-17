@@ -233,4 +233,34 @@ describe('API routes', () => {
     const bad = new HttpApiClient({ tenant: 'demo}:x', fetch: routerFetch });
     expect(await errorOf(bad.graph())).toMatchObject({ status: 400 });
   });
+
+  // Last: it adds another ops run to the tenant.
+  it('live mode without an OpenRouter key says so and shows the replay instead', async () => {
+    const key = process.env.OPENROUTER_API_KEY;
+    delete process.env.OPENROUTER_API_KEY;
+    try {
+      const events = await collect(
+        client.runAgent({ agent: 'ops-agent', mode: 'llm' }),
+        async (e) => {
+          if (e.type === 'approval.requested') {
+            await client.approval({ runId: e.runId, actionId: e.actionId, approved: false });
+          }
+        },
+      );
+      expect(events[0]).toEqual({
+        type: 'error',
+        runId: null,
+        message: 'Live mode is not configured (no OpenRouter key); showing the replay instead',
+      });
+      expect(events[1]).toMatchObject({ type: 'run.started', mode: 'replay' });
+      // The policy recorded above now stops the re-route, and the replay ends there honestly.
+      expect(events.find((e) => e.type === 'action.blocked')).toMatchObject({
+        tool: 'update_address',
+        rule: 'never re-route ord_1001 again',
+      });
+      expect(events.at(-1)).toMatchObject({ type: 'run.finished' });
+    } finally {
+      if (key !== undefined) process.env.OPENROUTER_API_KEY = key;
+    }
+  }, 30_000);
 });

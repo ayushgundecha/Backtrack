@@ -2,6 +2,8 @@
 
 One line per completed task, newest first. Format: `BT-0xx — what changed (how it was verified)`.
 
+- BT-037 — agents/billing.ts: live billing agent spec (recall before crediting); a live billing run on top of the replayed ops run creates the cross-agent dependency Q7 reaches (`pnpm test`: live.test.ts)
+- BT-035 — agents/live.ts + ops.ts: ToolLoopAgent whose world tools run through runTool (same gate, recorder and events as replay), a required `why` per call becomes the Step thought, Run.messages persisted; /api/agent live mode falls back to replay with the reason when there is no key or budget; blast_radius graph tool (`pnpm test`: live.test.ts mock-model dry-run incl. a denied email the model is told about; routes.test.ts fallback; ≤3 live runs left to Ayush after BT-051)
 - BT-034 — agents/llm.ts: OpenRouter free model with `models` fallbacks, temperature 0, 8-step cap; every request claims a daily budget on a Meta node in one statement (S9) and reports which model answered (`pnpm test`: llm.test.ts — per-day counting, no overspend under 7 concurrent claims, mock-model middleware; live smoke deferred to Ayush, needs BT-051 key)
 - BT-027 — sdk/validate.ts validateSummary: a model's undo sentence is kept only if every id, entity key, tool and step/depth count is in the graph's outcome; otherwise the row-built template is shown (`pnpm test`: validate.test.ts on a real depth-3 plan)
 - BT-033 — agents/tools.graph.ts: the 13 graph tools of PLAN §6 with flat schemas, one runGraphTool entry that returns evidence (named queries) or an actionable error (`pnpm test`: tools.graph.test.ts — schema snapshot + flatness check, unknown id → unknown outcome with candidates, plan → rehearse → execute → recall)
