@@ -20,7 +20,7 @@ import { finishRun, type RecordedAction, startRun, startStep } from '../sdk/reco
 import type { AnyToolDefinition, ToolRegistry } from '../sdk/registry.js';
 import { runTool } from '../sdk/run.js';
 import { LLM_RUN_SETTINGS } from './llm.js';
-import { type GraphToolContext, graphTools, runGraphTool } from './tools.graph.js';
+import { aiGraphTools } from './tools.graph.js';
 
 /** What a live agent is: its instructions, the world tools it may call, and graph self-checks. */
 export interface LiveAgentSpec {
@@ -107,21 +107,8 @@ export async function runLiveAgent(
       },
     });
 
-  const graphCtx: GraphToolContext = { g, registry: opts.registry };
-  const tools: ToolSet = {};
+  const tools: ToolSet = aiGraphTools({ g, registry: opts.registry }, spec.graphTools);
   for (const name of spec.tools) tools[name] = worldTool(opts.registry.get(name));
-  for (const name of spec.graphTools) {
-    const def = graphTools.find((t) => t.name === name);
-    if (!def) throw new Error(`Unknown graph tool ${name}`);
-    tools[name] = tool({
-      description: def.description,
-      inputSchema: def.input,
-      execute: async (args: unknown) => {
-        const out = await runGraphTool(graphCtx, name, args);
-        return out.ok ? out.result : { error: out.error };
-      },
-    });
-  }
 
   const agent = new ToolLoopAgent({
     model: opts.model,

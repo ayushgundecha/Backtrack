@@ -7,6 +7,7 @@
  * (resolve_action) before anything is planned. The model never writes Cypher; every answer
  * carries the named queries that produced it, so the agent can cite its evidence.
  */
+import { type ToolSet, tool } from 'ai';
 import { z } from 'zod';
 import type { TenantGraph } from '../graph/client.js';
 import {
@@ -351,4 +352,30 @@ export async function runGraphTool(
     }
     throw err;
   }
+}
+
+/**
+ * The named graph tools as AI SDK tools. A failed call answers `{ error }` so the model can
+ * correct itself; `onAnswer` sees every outcome (the undo agent keeps the last plan_undo result).
+ */
+export function aiGraphTools(
+  ctx: GraphToolContext,
+  names: readonly string[],
+  onAnswer?: (name: string, outcome: GraphToolOutcome) => void,
+): ToolSet {
+  const tools: ToolSet = {};
+  for (const name of names) {
+    const def = graphTools.find((t) => t.name === name);
+    if (!def) throw new Error(`Unknown graph tool ${name}`);
+    tools[name] = tool({
+      description: def.description,
+      inputSchema: def.input,
+      execute: async (args: unknown) => {
+        const out = await runGraphTool(ctx, name, args);
+        onAnswer?.(name, out);
+        return out.ok ? out.result : { error: out.error };
+      },
+    });
+  }
+  return tools;
 }
