@@ -35,24 +35,22 @@ describe('defineTool', () => {
       input: z.object({}),
       run: async () => ({ result: null, reads: [], writes: [] }),
     };
-    expect(() =>
-      // @ts-expect-error a reversible tool cannot also declare a mitigation
+    const both = () =>
       defineTool({
         ...base,
         effect: 'reversible',
-        inverse: 'x',
-        undoMode: 'inverse',
-        mitigation: 'y',
-      }),
-    ).toThrow(/not both or neither/);
-    expect(() =>
-      // @ts-expect-error an irreversible tool needs a mitigation
-      defineTool({ ...base, effect: 'irreversible' }),
-    ).toThrow(/not both or neither/);
-    expect(() =>
-      // @ts-expect-error a read-only tool has no inverse
-      defineTool({ ...base, effect: 'read', inverse: 'x' }),
-    ).toThrow();
+        inverse: 'i',
+        undoMode: 'restore',
+        // @ts-expect-error a reversible tool cannot also declare a mitigation
+        mitigation: 'm',
+      });
+    // @ts-expect-error an irreversible tool needs a mitigation
+    const neither = () => defineTool({ ...base, effect: 'irreversible' });
+    // @ts-expect-error a read-only tool has no inverse
+    const readWithInverse = () => defineTool({ ...base, effect: 'read', inverse: 'i' });
+    expect(both).toThrow(/not both or neither/);
+    expect(neither).toThrow(/not both or neither/);
+    expect(readWithInverse).toThrow(/not both or neither/);
   });
 
   it('maps the effect class onto Action flags', () => {
