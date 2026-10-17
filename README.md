@@ -75,7 +75,110 @@ The live deployment runs in replay mode by default: the golden fixtures in `fixt
 
 One graph per tenant: `bt:<tenant>` (`bt:demo` for the demo, `bt:test` for tests, `bt:acme` for the isolation demo). The full model with a diagram is in [`graph/model.md`](graph/model.md).
 
-<!-- TODO(BT-061): embed the Mermaid diagram from graph/model.md -->
+```mermaid
+erDiagram
+    Agent ||--o{ Run : RAN
+    Run ||--|{ Step : HAS
+    Step |o--o| Step : NEXT
+    Step ||--o| Action : DID
+    Action ||--o{ Effect : CAUSED
+    Effect }o--|| Entity : ON
+    Action }o--o{ Entity : READ
+    Action }o--o{ Action : "DEPENDS_ON (weight, via)"
+    Action |o--o| Action : UNDOES
+    UndoPlan }o--|| Action : ROOT
+    UndoPlan }o--o{ Action : "REVERTS (order)"
+    UndoPlan }o--o{ Action : "COULD_NOT_REVERT (mitigation)"
+    UndoPlan }o--o{ Action : "CONFLICT (reason)"
+    User }o--o{ Action : "APPROVED (ts, reason)"
+    User }o--o{ Action : DENIED
+    User ||--o{ UndoPlan : REQUESTED
+    User ||--o{ Policy : SET
+    Policy }o--o| Agent : ON_TOOL
+    Policy }o--o| Entity : APPLIES_TO
+    Policy ||--o{ Action : BLOCKED
+
+    Agent {
+        string id PK
+        string name
+        string version
+    }
+    User {
+        string id PK "default ayush"
+        string name
+    }
+    Run {
+        string id PK
+        string kind "agent or undo"
+        string agent_id
+        string status "running paused done failed undone"
+        string goal
+        number started_at
+        number ended_at
+        json messages "JSON string"
+        string pending_action_id
+        string model
+    }
+    Step {
+        string id PK
+        int index
+        string thought
+        number ts
+    }
+    Action {
+        string id PK
+        int seq "global order in the tenant"
+        string tool
+        json args "JSON string"
+        json result "JSON string"
+        number ts
+        string kind "do undo mitigation"
+        bool reversible
+        string inverse_tool
+        string mitigation_tool
+        string status "pending done undone blocked denied"
+    }
+    Effect {
+        string id PK
+        string kind "create update delete external"
+        string field
+        json before "JSON string or null"
+        json after "JSON string"
+        number ts
+    }
+    Entity {
+        string type PK
+        string key PK
+        string display
+        json state "JSON string, null when deleted"
+    }
+    UndoPlan {
+        string id PK
+        string root_action_id
+        number ts
+        string status "proposed rehearsed executed partial conflict"
+        string summary
+        int depth
+    }
+    Policy {
+        string id PK
+        string rule
+        string kind "block confirm warn"
+        string tool
+        string created_from_plan_id
+        number ts
+    }
+    Counter {
+        string id PK "always seq"
+        int n
+    }
+    Meta {
+        bool bootstrapped
+        number seeded_at
+        string llm_calls_day
+        int llm_calls_count
+    }
+```
 
 | Label | Properties |
 |---|---|
