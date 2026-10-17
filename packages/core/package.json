@@ -1,0 +1,31 @@
+{
+  "name": "@backtrack/core",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Backtrack core: FalkorDB graph layer, recorder SDK, undo engine, agents.",
+  "exports": {
+    ".": "./src/index.ts",
+    "./contracts": "./src/contracts/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "spike": "tsx scripts/spike.ts",
+    "demo:replay": "tsx scripts/demo-replay.ts",
+    "demo:undo": "tsx scripts/demo-undo.ts",
+    "gen:queries": "tsx scripts/gen-queries.ts"
+  },
+  "dependencies": {
+    "falkordb": "^6.8.0",
+    "nanoid": "^5.1.0",
+    "zod": "^4.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.20.0",
+    "typescript": "^5.9.0",
+    "vitest": "^3.2.0"
+  }
+}

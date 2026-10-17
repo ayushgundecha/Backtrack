@@ -18,3 +18,7 @@ coverage/
 *.db
 .beads-credential-key
 .beads/proxieddb/
+
+# tool-specific local config
+.codex/
+.claude/

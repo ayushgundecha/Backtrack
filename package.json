@@ -1,0 +1,31 @@
+{
+  "name": "backtrack",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Backtrack \u2014 the undo button for AI agents. Records every agent action as a cause-and-effect graph in FalkorDB and computes safe undo plans from it.",
+  "license": "MIT",
+  "author": "Ayush Gundecha",
+  "packageManager": "pnpm@12.14.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "db:up": "docker compose up -d falkordb",
+    "db:down": "docker compose down",
+    "db:logs": "docker compose logs -f falkordb",
+    "spike": "pnpm --filter @backtrack/core spike",
+    "demo:replay": "pnpm --filter @backtrack/core demo:replay",
+    "demo:undo": "pnpm --filter @backtrack/core demo:undo",
+    "gen:queries": "pnpm --filter @backtrack/core gen:queries",
+    "dev": "pnpm --filter @backtrack/web dev",
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
+    "test": "pnpm -r test"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.4.0",
+    "typescript": "^5.9.0"
+  }
+}

@@ -1,0 +1,64 @@
+{
+  "agentId": "ops-agent",
+  "goal": "Customer cust_42 (Rahul Mehta) says order ord_1001 is going to the wrong address. Fix it and keep the customer informed.",
+  "steps": [
+    {
+      "thought": "First I need to see the order and its current shipping address.",
+      "tool": "lookup_order",
+      "args": {
+        "orderId": "ord_1001"
+      }
+    },
+    {
+      "thought": "The customer's message mentions their new flat. I will update the shipping address on the order.",
+      "tool": "update_address",
+      "args": {
+        "orderId": "ord_1001",
+        "address": "221B Baker Street, London NW1 6XE"
+      }
+    },
+    {
+      "thought": "Open a support ticket so the change is tracked against the customer.",
+      "tool": "create_ticket",
+      "args": {
+        "customerId": "cust_42",
+        "subject": "Address correction for ord_1001",
+        "body": {
+          "$ref": "steps.1.result.summary"
+        }
+      }
+    },
+    {
+      "thought": "Let the ops channel know the order was re-routed and reference the ticket.",
+      "tool": "post_message",
+      "args": {
+        "channel": "#ops",
+        "text": {
+          "$ref": "steps.2.result.announcement"
+        }
+      }
+    },
+    {
+      "thought": "Confirm the change to the customer by email.",
+      "tool": "send_email",
+      "args": {
+        "to": "cust_42",
+        "subject": "Your order ord_1001 address has been updated",
+        "body": {
+          "$ref": "steps.1.result.customerNote"
+        }
+      },
+      "expectGate": "user-approval"
+    },
+    {
+      "thought": "Schedule a follow-up to make sure the delivery lands.",
+      "tool": "schedule_followup",
+      "args": {
+        "ticketId": {
+          "$ref": "steps.2.result.id"
+        },
+        "when": "2026-10-20T10:00:00+05:30"
+      }
+    }
+  ]
+}

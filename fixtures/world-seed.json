@@ -1,0 +1,226 @@
+{
+  "customers": [
+    {
+      "id": "cust_41",
+      "name": "Priya Nair",
+      "email": "priya.nair@example.com",
+      "tier": "gold"
+    },
+    {
+      "id": "cust_42",
+      "name": "Rahul Mehta",
+      "email": "rahul.mehta@example.com",
+      "tier": "standard"
+    },
+    {
+      "id": "cust_43",
+      "name": "Aisha Khan",
+      "email": "aisha.khan@example.com",
+      "tier": "standard"
+    },
+    {
+      "id": "cust_44",
+      "name": "Daniel Okafor",
+      "email": "daniel.okafor@example.com",
+      "tier": "gold"
+    },
+    {
+      "id": "cust_45",
+      "name": "Mei Lin",
+      "email": "mei.lin@example.com",
+      "tier": "standard"
+    },
+    {
+      "id": "cust_46",
+      "name": "Carlos Ruiz",
+      "email": "carlos.ruiz@example.com",
+      "tier": "standard"
+    },
+    {
+      "id": "cust_47",
+      "name": "Sofia Rossi",
+      "email": "sofia.rossi@example.com",
+      "tier": "gold"
+    },
+    {
+      "id": "cust_48",
+      "name": "Tom Becker",
+      "email": "tom.becker@example.com",
+      "tier": "standard"
+    },
+    {
+      "id": "cust_49",
+      "name": "Anya Petrova",
+      "email": "anya.petrova@example.com",
+      "tier": "standard"
+    },
+    {
+      "id": "cust_50",
+      "name": "Kwame Mensah",
+      "email": "kwame.mensah@example.com",
+      "tier": "gold"
+    }
+  ],
+  "orders": [
+    {
+      "id": "ord_1001",
+      "customerId": "cust_42",
+      "items": ["Noise-cancelling headphones"],
+      "total": 49.0,
+      "address": "14 Marine Drive, Mumbai 400020",
+      "status": "processing"
+    },
+    {
+      "id": "ord_1002",
+      "customerId": "cust_42",
+      "items": ["Mechanical keyboard", "USB-C hub"],
+      "total": 86.5,
+      "address": "7 Residency Road, Bengaluru 560025",
+      "status": "shipped"
+    },
+    {
+      "id": "ord_1003",
+      "customerId": "cust_43",
+      "items": ["Running shoes"],
+      "total": 124.0,
+      "address": "22 Park Street, Kolkata 700016",
+      "status": "delivered"
+    },
+    {
+      "id": "ord_1004",
+      "customerId": "cust_44",
+      "items": ["Espresso machine"],
+      "total": 161.5,
+      "address": "3 Jubilee Hills, Hyderabad 500033",
+      "status": "processing"
+    },
+    {
+      "id": "ord_1005",
+      "customerId": "cust_45",
+      "items": ["Desk lamp", "Notebook set"],
+      "total": 199.0,
+      "address": "9 Anna Salai, Chennai 600002",
+      "status": "shipped"
+    },
+    {
+      "id": "ord_1006",
+      "customerId": "cust_46",
+      "items": ["Trail backpack"],
+      "total": 236.5,
+      "address": "14 Marine Drive, Mumbai 400020",
+      "status": "delivered"
+    },
+    {
+      "id": "ord_1007",
+      "customerId": "cust_47",
+      "items": ["Smart thermostat"],
+      "total": 274.0,
+      "address": "7 Residency Road, Bengaluru 560025",
+      "status": "processing"
+    },
+    {
+      "id": "ord_1008",
+      "customerId": "cust_48",
+      "items": ["Yoga mat", "Water bottle"],
+      "total": 311.5,
+      "address": "22 Park Street, Kolkata 700016",
+      "status": "shipped"
+    },
+    {
+      "id": "ord_1009",
+      "customerId": "cust_49",
+      "items": ["Board game"],
+      "total": 349.0,
+      "address": "3 Jubilee Hills, Hyderabad 500033",
+      "status": "delivered"
+    },
+    {
+      "id": "ord_1010",
+      "customerId": "cust_50",
+      "items": ["Bluetooth speaker"],
+      "total": 386.5,
+      "address": "9 Anna Salai, Chennai 600002",
+      "status": "processing"
+    },
+    {
+      "id": "ord_1011",
+      "customerId": "cust_41",
+      "items": ["Noise-cancelling headphones"],
+      "total": 424.0,
+      "address": "14 Marine Drive, Mumbai 400020",
+      "status": "shipped"
+    },
+    {
+      "id": "ord_1012",
+      "customerId": "cust_42",
+      "items": ["Mechanical keyboard", "USB-C hub"],
+      "total": 461.5,
+      "address": "7 Residency Road, Bengaluru 560025",
+      "status": "delivered"
+    },
+    {
+      "id": "ord_1013",
+      "customerId": "cust_43",
+      "items": ["Running shoes"],
+      "total": 499.0,
+      "address": "22 Park Street, Kolkata 700016",
+      "status": "processing"
+    },
+    {
+      "id": "ord_1014",
+      "customerId": "cust_44",
+      "items": ["Espresso machine"],
+      "total": 536.5,
+      "address": "3 Jubilee Hills, Hyderabad 500033",
+      "status": "shipped"
+    },
+    {
+      "id": "ord_1015",
+      "customerId": "cust_45",
+      "items": ["Desk lamp", "Notebook set"],
+      "total": 574.0,
+      "address": "9 Anna Salai, Chennai 600002",
+      "status": "delivered"
+    },
+    {
+      "id": "ord_1016",
+      "customerId": "cust_46",
+      "items": ["Trail backpack"],
+      "total": 611.5,
+      "address": "14 Marine Drive, Mumbai 400020",
+      "status": "processing"
+    },
+    {
+      "id": "ord_1017",
+      "customerId": "cust_47",
+      "items": ["Smart thermostat"],
+      "total": 649.0,
+      "address": "7 Residency Road, Bengaluru 560025",
+      "status": "shipped"
+    },
+    {
+      "id": "ord_1018",
+      "customerId": "cust_48",
+      "items": ["Yoga mat", "Water bottle"],
+      "total": 686.5,
+      "address": "22 Park Street, Kolkata 700016",
+      "status": "delivered"
+    },
+    {
+      "id": "ord_1019",
+      "customerId": "cust_49",
+      "items": ["Board game"],
+      "total": 724.0,
+      "address": "3 Jubilee Hills, Hyderabad 500033",
+      "status": "processing"
+    },
+    {
+      "id": "ord_1020",
+      "customerId": "cust_50",
+      "items": ["Bluetooth speaker"],
+      "total": 761.5,
+      "address": "9 Anna Salai, Chennai 600002",
+      "status": "shipped"
+    }
+  ]
+}

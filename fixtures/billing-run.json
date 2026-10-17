@@ -1,0 +1,33 @@
+{
+  "agentId": "billing-agent",
+  "goal": "Review open support tickets and apply goodwill credits where an order was disrupted.",
+  "steps": [
+    {
+      "thought": "Check which support tickets are open right now.",
+      "tool": "list_open_tickets",
+      "args": {}
+    },
+    {
+      "thought": "Read the first open ticket to understand what happened.",
+      "tool": "lookup_ticket",
+      "args": {
+        "ticketId": {
+          "$ref": "steps.0.result.tickets.0.id"
+        }
+      }
+    },
+    {
+      "thought": "An address disruption qualifies for a small goodwill credit.",
+      "tool": "apply_credit",
+      "args": {
+        "customerId": {
+          "$ref": "steps.1.result.customerId"
+        },
+        "amount": 10,
+        "reason": {
+          "$ref": "steps.1.result.subject"
+        }
+      }
+    }
+  ]
+}
