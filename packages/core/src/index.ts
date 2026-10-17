@@ -1,3 +1,4 @@
+export * from './agents/tools.billing.js';
 export * from './agents/tools.js';
 export * from './agents/tools.ops.js';
 export * from './contracts/index.js';
