@@ -819,6 +819,7 @@ WITH ag, r, s, a, re, head(collect({id: w.id, tool: w.tool, seq: w.seq, field: r
 WITH ag, r, s, a, [x IN collect({entity: re.type + ':' + re.key, writerId: wr.id, writerTool: wr.tool,
   writerSeq: wr.seq, field: wr.field, after: wr.after}) WHERE x.entity IS NOT NULL] AS reads
 OPTIONAL MATCH (a)-[:CAUSED]->(f:Effect)-[:ON]->(e:Entity)
+WITH ag, r, s, a, reads, f, e ORDER BY f.id
 WITH ag, r, s, a, reads, [x IN collect({id: f.id, kind: f.kind, field: f.field, before: f.before,
   after: f.after, ts: f.ts, type: e.type, key: e.key, display: e.display}) WHERE x.id IS NOT NULL] AS effects
 OPTIONAL MATCH (a)-[:DEPENDS_ON]->(up:Action)

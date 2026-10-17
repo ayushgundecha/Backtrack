@@ -2,6 +2,7 @@
 
 One line per completed task, newest first. Format: `BT-0xx — what changed (how it was verified)`.
 
+- BT-013 — Q1–Q7 and Q12–Q14 as typed, named queries; `pnpm gen:queries` writes graph/queries.cypher (`pnpm test`: queries.test.ts on the golden demo graph, plus a staleness check on the generated file)
 - BT-021 — sdk/recorder.ts records each action in one Cypher statement with DEPENDS_ON to the latest earlier writer; pending actions commit after approval (`pnpm test`: recorder.test.ts, 8 cases on bt:test)
 - BT-020 — sdk/registry.ts: defineTool with mutually exclusive reversible/irreversible classes, ToolRegistry, conversion to ai@7 tools (`pnpm test`: registry.test.ts; tsc checks the types)
 - BT-012 — world/seed.ts seeds 10 customers and 20 orders with fixed ids; world/store.ts reads state, folds Effects for as-of snapshots, applies effects (`pnpm test`: world.test.ts)
