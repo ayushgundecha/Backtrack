@@ -2,6 +2,7 @@
 
 One line per completed task, newest first. Format: `BT-0xx — what changed (how it was verified)`.
 
+- BT-027 — sdk/validate.ts validateSummary: a model's undo sentence is kept only if every id, entity key, tool and step/depth count is in the graph's outcome; otherwise the row-built template is shown (`pnpm test`: validate.test.ts on a real depth-3 plan)
 - BT-033 — agents/tools.graph.ts: the 13 graph tools of PLAN §6 with flat schemas, one runGraphTool entry that returns evidence (named queries) or an actionable error (`pnpm test`: tools.graph.test.ts — schema snapshot + flatness check, unknown id → unknown outcome with candidates, plan → rehearse → execute → recall)
 - BT-041 — API routes for every contract in api.ts (graph, world, actions, explain, reset, agent SSE, approval, undo, undo/execute SSE, rehearse, plan, policy, algo) over a core views module; Node runtime, maxDuration 300 on the streams (`pnpm test`: routes.test.ts drives the routes through the panel's HttpApiClient against FalkorDB; `next build`; curl smoke of replay → approval → undo on `next start`)
 - BT-026 — sdk/policies.ts setPolicy: validated "never again" rules as graph nodes; refuses unknown agents/entities so a typo cannot widen a rule; Q5 now also matches entity-only policies (`pnpm test`: policies.test.ts replays the ops fixture under block, other-agent and entity-only policies)

@@ -19,6 +19,7 @@ export * from './sdk/resolve.js';
 export * from './sdk/run.js';
 export * from './sdk/trace.js';
 export * from './sdk/undo.js';
+export * from './sdk/validate.js';
 export * from './sdk/views.js';
 export * from './world/seed.js';
 export * from './world/store.js';
