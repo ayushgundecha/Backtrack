@@ -2,6 +2,8 @@
 
 One line per completed task, newest first. Format: `BT-0xx — what changed (how it was verified)`.
 
+- BT-021 — sdk/recorder.ts records each action in one Cypher statement with DEPENDS_ON to the latest earlier writer; pending actions commit after approval (`pnpm test`: recorder.test.ts, 8 cases on bt:test)
+- BT-020 — sdk/registry.ts: defineTool with mutually exclusive reversible/irreversible classes, ToolRegistry, conversion to ai@7 tools (`pnpm test`: registry.test.ts; tsc checks the types)
 - BT-012 — world/seed.ts seeds 10 customers and 20 orders with fixed ids; world/store.ts reads state, folds Effects for as-of snapshots, applies effects (`pnpm test`: world.test.ts)
 - BT-011 — graph/bootstrap.ts: idempotent indexes → UNIQUE constraints (polled to OPERATIONAL) → secondary indexes → Counter, agents, user, Meta; queries.ts holds every statement (`pnpm test`: bootstrap.test.ts runs it twice)
 - BT-066 — docs/judge-qa.md: the ten judge questions with pointers and blanks for Ayush's answers (proofread against PLAN §9)
