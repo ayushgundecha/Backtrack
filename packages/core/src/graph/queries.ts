@@ -133,6 +133,14 @@ OPTIONAL MATCH (c:Counter {id: 'seq'})
 RETURN m.bootstrapped AS bootstrapped, m.seeded_at AS seededAt, c.n AS seq`,
 });
 
+export const listAgents = define<Record<string, never>, { id: string; name: string }>({
+  id: 'S8',
+  title: 'Agents',
+  answers: 'which agents are registered in this tenant (policies and runs may only name these)?',
+  mode: 'read',
+  text: `MATCH (a:Agent) RETURN a.id AS id, a.name AS name ORDER BY id`,
+});
+
 // ---------------------------------------------------------------------------------------------
 // W — the world (Entity.state)
 // ---------------------------------------------------------------------------------------------
@@ -765,10 +773,10 @@ export const q5Policies = define<
   id: 'Q5',
   title: 'Policy check',
   answers:
-    'does any policy block, require confirmation for, or warn about this tool, for this agent, on these entities?',
+    'does any policy block, require confirmation for, or warn about this call: this tool, or any tool on these entities, for this agent?',
   mode: 'read',
   text: `MATCH (pol:Policy)
-WHERE pol.tool = $tool
+WHERE (pol.tool = $tool OR (pol.tool IS NULL AND (pol)-[:APPLIES_TO]->(:Entity)))
   AND (NOT (pol)-[:ON_TOOL]->(:Agent) OR (pol)-[:ON_TOOL]->(:Agent {id: $agentId}))
 OPTIONAL MATCH (pol)-[:APPLIES_TO]->(e:Entity)
 WITH pol, collect(e.type + ':' + e.key) AS scope

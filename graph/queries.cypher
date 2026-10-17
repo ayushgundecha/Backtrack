@@ -49,9 +49,9 @@ RETURN DISTINCT u.id AS id, u.tool AS tool, u.seq AS seq
 ORDER BY seq;
 
 // Q5 · Policy check (read)
-// answers: does any policy block, require confirmation for, or warn about this tool, for this agent, on these entities?
+// answers: does any policy block, require confirmation for, or warn about this call: this tool, or any tool on these entities, for this agent?
 MATCH (pol:Policy)
-WHERE pol.tool = $tool
+WHERE (pol.tool = $tool OR (pol.tool IS NULL AND (pol)-[:APPLIES_TO]->(:Entity)))
   AND (NOT (pol)-[:ON_TOOL]->(:Agent) OR (pol)-[:ON_TOOL]->(:Agent {id: $agentId}))
 OPTIONAL MATCH (pol)-[:APPLIES_TO]->(e:Entity)
 WITH pol, collect(e.type + ':' + e.key) AS scope
@@ -206,6 +206,10 @@ MATCH (m:Meta {id: 'meta'}) SET m.seeded_at = $ts;
 OPTIONAL MATCH (m:Meta {id: 'meta'})
 OPTIONAL MATCH (c:Counter {id: 'seq'})
 RETURN m.bootstrapped AS bootstrapped, m.seeded_at AS seededAt, c.n AS seq;
+
+// S8 · Agents (read)
+// answers: which agents are registered in this tenant (policies and runs may only name these)?
+MATCH (a:Agent) RETURN a.id AS id, a.name AS name ORDER BY id;
 
 // ==============================================================================================
 // World (Entity.state)

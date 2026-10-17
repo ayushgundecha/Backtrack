@@ -8,6 +8,7 @@ export * from './graph/cypher.js';
 export * as queries from './graph/queries.js';
 export * from './sdk/gate.js';
 export * from './sdk/inverse.js';
+export * from './sdk/policies.js';
 export * from './sdk/recorder.js';
 export * from './sdk/registry.js';
 export * from './sdk/rehearse.js';
