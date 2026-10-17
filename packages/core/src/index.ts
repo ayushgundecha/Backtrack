@@ -1,3 +1,5 @@
+export * from './agents/fixtures.js';
+export * from './agents/replay.js';
 export * from './agents/tools.billing.js';
 export * from './agents/tools.js';
 export * from './agents/tools.ops.js';
@@ -16,6 +18,7 @@ export * from './sdk/resolve.js';
 export * from './sdk/run.js';
 export * from './sdk/trace.js';
 export * from './sdk/undo.js';
+export * from './sdk/views.js';
 export * from './world/seed.js';
 export * from './world/store.js';
 export * from './world/types.js';

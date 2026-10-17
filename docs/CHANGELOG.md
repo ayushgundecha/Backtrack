@@ -2,6 +2,7 @@
 
 One line per completed task, newest first. Format: `BT-0xx — what changed (how it was verified)`.
 
+- BT-041 — API routes for every contract in api.ts (graph, world, actions, explain, reset, agent SSE, approval, undo, undo/execute SSE, rehearse, plan, policy, algo) over a core views module; Node runtime, maxDuration 300 on the streams (`pnpm test`: routes.test.ts drives the routes through the panel's HttpApiClient against FalkorDB; `next build`; curl smoke of replay → approval → undo on `next start`)
 - BT-026 — sdk/policies.ts setPolicy: validated "never again" rules as graph nodes; refuses unknown agents/entities so a typo cannot widen a rule; Q5 now also matches entity-only policies (`pnpm test`: policies.test.ts replays the ops fixture under block, other-agent and entity-only policies)
 - BT-040 — apps/web scaffold: design tokens, three-column shell, typed ApiClient over the contracts and a fixture-backed mock (`NEXT_PUBLIC_MOCK=1`) that reproduces the golden gate and undo plans (`pnpm test`: web api/mock/session tests; `next build`; Lighthouse accessibility 100)
 - BT-032 — agents/replay.ts replays the golden fixtures through the real recorder and gate; `pnpm demo:replay` and `pnpm demo:undo` CLIs; FalkorDB Browser screenshot in docs/media (`pnpm test`: replay.test.ts; `pnpm demo:replay --approve --billing --fast` then `pnpm demo:undo "undo the address change" --depth 3 --rehearse` executed the 6-step plan)
