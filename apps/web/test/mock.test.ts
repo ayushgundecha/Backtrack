@@ -117,9 +117,14 @@ describe('mock client: golden ops and billing runs', () => {
       { agentId: 'billing-agent', actionId: idOf('apply_credit'), tool: 'apply_credit', hops: 3 },
     ]);
     const credit = deep.plan.steps[0];
-    expect(credit?.via).toEqual(
-      ['apply_credit', 'post_message', 'create_ticket', 'update_address'].map(idOf),
-    );
+    // Tool names from the root to the dependent, both included (the engine's Q1 `via`).
+    expect(credit?.via).toEqual([
+      'update_address',
+      'create_ticket',
+      'post_message',
+      'apply_credit',
+    ]);
+    expect(deep.plan.steps.at(-1)?.via).toEqual(['update_address']);
     expect(deep.plan.blast).toMatchObject({ actions: 6, irreversible: 1 });
   });
 

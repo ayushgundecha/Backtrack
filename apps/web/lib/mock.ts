@@ -471,7 +471,11 @@ class MockEngine {
         label: `${undoTool ?? 'skip'}${entity ? ` ${entity.key}` : ''} (${a.record.tool})`,
         entity,
         hops: reach?.hops ?? 0,
-        via: reach?.via ?? [root.record.id],
+        // Same shape as the engine's Q1 row: tool names from the root to this dependent, both
+        // included; the root's own step is just its tool.
+        via: reach
+          ? [...reach.via].reverse().map((id) => this.action(id)?.record.tool ?? id)
+          : [a.record.tool],
       };
     });
 

@@ -8,6 +8,7 @@
 import type {
   AgentId,
   GraphSnapshot,
+  RehearsalDiff,
   RunEvent,
   RunMode,
   UndoOutcome,
@@ -24,7 +25,7 @@ import {
   useState,
 } from 'react';
 import { toast } from 'sonner';
-import { type ApiClient, createApiClient } from '@/lib/api';
+import { type ApiClient, createApiClient, type UndoRequest } from '@/lib/api';
 import { initialSession, type SessionState, sessionReducer } from '@/lib/session';
 
 type Connection = 'connecting' | 'ok' | 'error';
@@ -44,7 +45,12 @@ interface BacktrackActions {
   /** Resolves true once the run accepted the answer; false (with a toast) otherwise. */
   answerApproval(runId: string, actionId: string, approved: boolean): Promise<boolean>;
   resetWorld(): void;
-  requestUndo(text: string): Promise<void>;
+  /** Plain words, or an exact action (⌘Z prefill, a candidate) with an optional depth. */
+  requestUndo(request: string | UndoRequest): Promise<void>;
+  /** Runs the plan on a GRAPH.COPY fork and returns the diff; null after a toasted error. */
+  rehearseUndo(planId: string): Promise<RehearsalDiff | null>;
+  /** Streams undo.step events into the session; resolves when the stream ends. */
+  executeUndo(planId: string): Promise<void>;
 }
 
 interface BacktrackMeta {
@@ -191,14 +197,30 @@ export function BacktrackProvider({
           })
           .catch((error: unknown) => toast.error(messageOf(error)));
       },
-      async requestUndo(text) {
+      async requestUndo(request) {
         if (!client) return;
         try {
-          setUndoOutcome(await client.undo({ text }));
+          setUndoOutcome(
+            await client.undo(typeof request === 'string' ? { text: request } : request),
+          );
           void refresh(client);
         } catch (error) {
           toast.error(messageOf(error));
         }
+      },
+      async rehearseUndo(planId) {
+        if (!client) return null;
+        try {
+          const diff = await client.rehearse(planId);
+          void refresh(client);
+          return diff;
+        } catch (error) {
+          toast.error(messageOf(error));
+          return null;
+        }
+      },
+      executeUndo(planId) {
+        return consume((signal) => (client as ApiClient).executeUndo(planId, signal));
       },
     }),
     [client, consume, refresh],
