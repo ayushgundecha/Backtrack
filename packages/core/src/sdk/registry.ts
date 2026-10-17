@@ -36,8 +36,8 @@ export type EffectClass =
   | { effect: 'reversible'; inverse: string; undoMode: 'restore' | 'inverse' }
   /** Has an external effect that cannot be taken back; the undo engine runs `mitigation`. */
   | { effect: 'irreversible'; mitigation: string }
-  /** Only ever run by the undo engine as the compensation for an irreversible action. */
-  | { effect: 'mitigation' };
+  /** Only ever run by the undo engine: an inverse (restore) or a mitigation for an external effect. */
+  | { effect: 'compensation' };
 
 export type ToolDefinition<I extends z.ZodType = z.ZodType, R = unknown> = EffectClass & {
   name: string;
@@ -59,7 +59,7 @@ export function defineTool<I extends z.ZodType, R>(
   const ok =
     (def.effect === 'reversible' && hasInverse && !hasMitigation) ||
     (def.effect === 'irreversible' && hasMitigation && !hasInverse) ||
-    ((def.effect === 'read' || def.effect === 'mitigation') && !hasInverse && !hasMitigation);
+    ((def.effect === 'read' || def.effect === 'compensation') && !hasInverse && !hasMitigation);
   if (!ok) {
     throw new Error(
       `defineTool(${def.name}): a tool is either reversible (with an inverse) or irreversible (with a mitigation), not both or neither`,

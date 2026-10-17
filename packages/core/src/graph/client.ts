@@ -14,8 +14,6 @@
 import { ConstraintType, EntityType, FalkorDB, type Graph } from 'falkordb';
 import type { QueryResult } from '../contracts/types.js';
 
-export { ConstraintType, EntityType };
-
 export interface FalkorConfig {
   host: string;
   port: number;
