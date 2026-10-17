@@ -359,6 +359,14 @@ MATCH (a:Action {id: $actionId})
 OPTIONAL MATCH (u:User)-[r:APPROVED|DENIED]->(a)
 RETURN a.status AS status, type(r) AS decision, u.id AS by;
 
+// R9 · Runs in progress (read)
+// answers: is an agent run or an undo still in progress on this tenant (started recently and not finished)?
+MATCH (r:Run)
+WHERE r.status IN ['running', 'paused'] AND r.started_at >= $since
+RETURN r.id AS id, r.kind AS kind, r.agent_id AS agentId, r.status AS status,
+  r.started_at AS startedAt
+ORDER BY startedAt;
+
 // ==============================================================================================
 // Undo plans and policies
 // ==============================================================================================

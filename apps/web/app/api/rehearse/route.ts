@@ -1,5 +1,5 @@
 import { api, loadPlan, rehearseUndo } from '@backtrack/core';
-import { HttpError, json, parseBody, route, tenantGraph, tools } from '@/lib/server';
+import { HttpError, json, parseBody, rateLimit, route, tenantGraph, tools } from '@/lib/server';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -7,6 +7,7 @@ export const maxDuration = 60;
 
 /** POST /api/rehearse: execute the plan on a GRAPH.COPY fork, diff it with live, drop the fork. */
 export const POST = route(async (req) => {
+  rateLimit(req, 'rehearse');
   const { tenant, planId } = await parseBody(req, api.rehearse.body);
   const g = await tenantGraph(tenant);
   if (!(await loadPlan(g, planId)))

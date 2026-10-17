@@ -10,7 +10,7 @@ import {
   replayRun,
   runLiveAgent,
 } from '@backtrack/core';
-import { parseBody, route, sse, tenantGraph, tools } from '@/lib/server';
+import { assertIdle, parseBody, rateLimit, route, sse, tenantGraph, tools } from '@/lib/server';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -24,8 +24,10 @@ export const maxDuration = 300;
  * (another request, possibly another instance: the graph is the bus).
  */
 export const POST = route(async (req) => {
+  rateLimit(req, 'agent');
   const { tenant, agent, mode, goal } = await parseBody(req, api.agent.body);
   const g = await tenantGraph(tenant);
+  await assertIdle(g);
   return sse(req, async (emit, signal) => {
     const fixture = loadRunFixture(agent);
     const replay = () => replayRun(g, fixture, { registry: tools(), emit, signal });

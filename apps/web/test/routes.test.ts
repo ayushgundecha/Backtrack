@@ -90,6 +90,13 @@ describe('API routes', () => {
         if (e.type === 'approval.requested') {
           const pending = { runId: e.runId, actionId: e.actionId };
           decided.push(pending);
+          // While this run waits at the gate, nobody can start another one on the tenant.
+          expect(
+            await errorOf(collect(client.runAgent({ agent: 'billing-agent', mode: 'replay' }))),
+          ).toEqual({
+            status: 409,
+            message: 'A run by ops-agent is still paused on this tenant; wait for it to finish',
+          });
           expect(await client.approval({ ...pending, approved: true })).toEqual({ ok: true });
         }
       },
@@ -263,4 +270,21 @@ describe('API routes', () => {
       if (key !== undefined) process.env.OPENROUTER_API_KEY = key;
     }
   }, 30_000);
+
+  it('rejects oversized bodies and fields, and rate-limits per client', async () => {
+    const post = (path: string, body: string) =>
+      routerFetch(path, { method: 'POST', headers: { 'content-type': 'application/json' }, body });
+    const big = await post('/api/undo', JSON.stringify({ tenant: TENANT, text: 'x'.repeat(9000) }));
+    expect(big.status).toBe(413);
+    const long = await post('/api/undo', JSON.stringify({ tenant: TENANT, text: 'x'.repeat(301) }));
+    expect(await long.json()).toEqual({ error: 'text is longer than 300 characters' });
+
+    // Reset allows 3 a minute; this file already used 2 (setup and the wrong-token test).
+    const resetWith = (token: string) =>
+      post('/api/reset', JSON.stringify({ tenant: TENANT, token }));
+    expect((await resetWith('nope')).status).toBe(401);
+    const limited = await resetWith('nope');
+    expect(limited.status).toBe(429);
+    expect(Number(limited.headers.get('retry-after'))).toBeGreaterThan(0);
+  });
 });

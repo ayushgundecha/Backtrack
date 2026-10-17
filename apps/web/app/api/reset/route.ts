@@ -1,6 +1,6 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
 import { api, openTenant, resetTenant } from '@backtrack/core';
-import { HttpError, json, parseBody, route, tenantGraph } from '@/lib/server';
+import { HttpError, json, parseBody, rateLimit, route, tenantGraph } from '@/lib/server';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -10,6 +10,7 @@ const digest = (s: string) => createHash('sha256').update(s).digest();
 
 /** POST /api/reset: drop the tenant graph and rebuild schema, actors and the seeded world. */
 export const POST = route(async (req) => {
+  rateLimit(req, 'reset');
   const { tenant, token } = await parseBody(req, api.reset.body);
   const expected = process.env.RESET_TOKEN;
   if (!expected) throw new HttpError(503, 'Reset is disabled: RESET_TOKEN is not configured');

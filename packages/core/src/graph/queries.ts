@@ -446,6 +446,23 @@ RETURN a.status AS status, type(r) AS decision, u.id AS by`,
 // P — undo plans and policies
 // ---------------------------------------------------------------------------------------------
 
+export const activeRuns = define<
+  { since: number },
+  { id: string; kind: string; agentId: string; status: string; startedAt: number }
+>({
+  id: 'R9',
+  title: 'Runs in progress',
+  answers:
+    'is an agent run or an undo still in progress on this tenant (started recently and not finished)?',
+  mode: 'read',
+  // `since` drops runs whose request died without finishing (a stream outlived by its function).
+  text: `MATCH (r:Run)
+WHERE r.status IN ['running', 'paused'] AND r.started_at >= $since
+RETURN r.id AS id, r.kind AS kind, r.agent_id AS agentId, r.status AS status,
+  r.started_at AS startedAt
+ORDER BY startedAt`,
+});
+
 export const createPlan = define<
   {
     planId: string;

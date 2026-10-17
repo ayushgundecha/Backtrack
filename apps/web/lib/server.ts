@@ -9,17 +9,27 @@ import {
   ensureTenant,
   openTenant,
   PolicyError,
+  queries,
   RunEvent,
   type TenantGraph,
   type ToolRegistry,
 } from '@backtrack/core';
 import { ZodError, type z } from 'zod';
+import {
+  clientKey,
+  type LimitedRoute,
+  MAX_BODY_BYTES,
+  oversizedField,
+  RATE_LIMITS,
+  RateLimiter,
+} from './limits';
 
 /** An error with an HTTP status and a message that is safe and useful to show in the panel. */
 export class HttpError extends Error {
   constructor(
     readonly status: number,
     message: string,
+    readonly headers: Record<string, string> = {},
   ) {
     super(message);
   }
@@ -51,13 +61,50 @@ export function parseQuery<S extends z.ZodType>(req: Request, schema: S): z.infe
 }
 
 export async function parseBody<S extends z.ZodType>(req: Request, schema: S): Promise<z.infer<S>> {
+  const raw = await req.text();
+  if (new TextEncoder().encode(raw).length > MAX_BODY_BYTES) {
+    throw new HttpError(413, `Request body is larger than ${MAX_BODY_BYTES} bytes`);
+  }
   let body: unknown;
   try {
-    body = await req.json();
+    body = JSON.parse(raw);
   } catch {
     throw new HttpError(400, 'Request body must be JSON');
   }
+  const tooLong = oversizedField(body);
+  if (tooLong) throw new HttpError(400, tooLong);
   return schema.parse(body);
+}
+
+const limiter = new RateLimiter();
+
+/** Count this request against the client's per-minute allowance for a route (429 when over). */
+export function rateLimit(req: Request, route: LimitedRoute): void {
+  const verdict = limiter.take(`${route}:${clientKey(req)}`, RATE_LIMITS[route]);
+  if (!verdict.ok) {
+    throw new HttpError(429, `Too many requests; try again in ${verdict.retryAfterS} s`, {
+      'retry-after': String(verdict.retryAfterS),
+    });
+  }
+}
+
+/** Longest a streamed run can live (the routes' maxDuration); older unfinished runs are dead. */
+const RUN_LIFETIME_MS = 300_000;
+
+/**
+ * One run or undo at a time per tenant. Checked in the graph (R9), not in memory, because two
+ * requests may land on different serverless instances.
+ */
+export async function assertIdle(g: TenantGraph): Promise<void> {
+  const { rows } = await queries.activeRuns(g, { since: Date.now() - RUN_LIFETIME_MS });
+  const busy = rows[0];
+  if (busy) {
+    const what = busy.kind === 'undo' ? 'An undo' : `A run by ${busy.agentId}`;
+    throw new HttpError(
+      409,
+      `${what} is still ${busy.status} on this tenant; wait for it to finish`,
+    );
+  }
 }
 
 /** Validate a response against its contract before it leaves the server. */
@@ -77,8 +124,9 @@ export function route(handler: (req: Request) => Promise<Response>) {
 }
 
 export function errorResponse(err: unknown): Response {
-  if (err instanceof HttpError)
-    return Response.json({ error: err.message }, { status: err.status });
+  if (err instanceof HttpError) {
+    return Response.json({ error: err.message }, { status: err.status, headers: err.headers });
+  }
   if (err instanceof ZodError) {
     const message = err.issues
       .map((i) => (i.path.length ? `${i.path.join('.')}: ${i.message}` : i.message))

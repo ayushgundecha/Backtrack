@@ -1,5 +1,5 @@
 import { api, planUndo } from '@backtrack/core';
-import { HttpError, json, parseBody, route, tenantGraph, tools } from '@/lib/server';
+import { HttpError, json, parseBody, rateLimit, route, tenantGraph, tools } from '@/lib/server';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -9,6 +9,7 @@ export const dynamic = 'force-dynamic';
  * Answers one of the four outcomes: plan, memory (already undone), none, unknown (candidates).
  */
 export const POST = route(async (req) => {
+  rateLimit(req, 'undo');
   const { tenant, text, actionId, depth } = await parseBody(req, api.undo.body);
   if (!text?.trim() && !actionId) throw new HttpError(400, 'Say what to undo: text or actionId');
   const g = await tenantGraph(tenant);

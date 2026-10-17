@@ -1,5 +1,5 @@
 import { api, queries, recordDecision } from '@backtrack/core';
-import { HttpError, json, parseBody, route, tenantGraph } from '@/lib/server';
+import { HttpError, json, parseBody, rateLimit, route, tenantGraph } from '@/lib/server';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -9,6 +9,7 @@ export const dynamic = 'force-dynamic';
  * is waiting polls the graph for it (R8), so this request only writes; it never touches the run.
  */
 export const POST = route(async (req) => {
+  rateLimit(req, 'approval');
   const { tenant, runId, actionId, approved } = await parseBody(req, api.approval.body);
   const g = await tenantGraph(tenant);
   const [action] = (await queries.getActions(g, { ids: [actionId] })).rows;
