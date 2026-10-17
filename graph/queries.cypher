@@ -22,8 +22,9 @@ ORDER BY seq DESC;
 // answers: in what order can these actions be undone, and what did each one change? (seq DESC is a reverse topological order because DEPENDS_ON always points to a smaller seq)
 MATCH (a:Action)
 WHERE a.id IN $actionIds
-OPTIONAL MATCH (a)-[:CAUSED]->(:Effect)-[:ON]->(e:Entity)
-WITH a, collect(DISTINCT {type: e.type, key: e.key, display: e.display}) AS entities
+OPTIONAL MATCH (a)-[:CAUSED]->(f:Effect)-[:ON]->(e:Entity)
+WITH a, f, e ORDER BY f.id
+WITH a, [x IN collect({type: e.type, key: e.key, display: e.display, kind: f.kind}) WHERE x.key IS NOT NULL] AS entities
 RETURN a.id AS id, a.tool AS tool, a.seq AS seq, a.status AS status, a.reversible AS reversible,
   a.inverse_tool AS inverseTool, a.mitigation_tool AS mitigationTool, entities
 ORDER BY seq DESC;
@@ -283,7 +284,7 @@ MATCH (r:Run {id: $runId}) SET r.messages = $messages RETURN r.id AS id;
 // R7 · Human decision on a gated action (write)
 // answers: records who approved or denied a pending action, when and why
 MATCH (u:User {id: $userId}), (a:Action {id: $actionId})
-WHERE a.status = 'pending'
+WHERE a.status = 'pending' AND NOT (a)<-[:APPROVED]-(:User) AND NOT (a)<-[:DENIED]-(:User)
 FOREACH (_ IN CASE WHEN $approved THEN [1] ELSE [] END |
   CREATE (u)-[:APPROVED {ts: $ts, reason: $reason}]->(a))
 FOREACH (_ IN CASE WHEN $approved THEN [] ELSE [1] END |
@@ -311,10 +312,11 @@ UNWIND range(0, size($stepIds) - 1) AS i
 MATCH (a:Action {id: $stepIds[i]})
 FOREACH (_ IN CASE WHEN $stepModes[i] = 'mitigation' THEN [1] ELSE [] END |
   CREATE (p)-[:COULD_NOT_REVERT {order: i + 1, mode: $stepModes[i], label: $stepLabels[i],
-    hops: $stepHops[i], via: $stepVia[i], mitigation: $stepMitigations[i]}]->(a))
+    hops: $stepHops[i], via: $stepVia[i], entity: $stepEntities[i],
+    mitigation: $stepMitigations[i]}]->(a))
 FOREACH (_ IN CASE WHEN $stepModes[i] = 'mitigation' THEN [] ELSE [1] END |
   CREATE (p)-[:REVERTS {order: i + 1, mode: $stepModes[i], label: $stepLabels[i],
-    hops: $stepHops[i], via: $stepVia[i]}]->(a))
+    hops: $stepHops[i], via: $stepVia[i], entity: $stepEntities[i]}]->(a))
 RETURN count(a) AS steps;
 
 // P2 · Load an undo plan (read)
@@ -322,13 +324,12 @@ RETURN count(a) AS steps;
 MATCH (p:UndoPlan {id: $planId})-[:ROOT]->(root:Action)
 MATCH (p)-[r:REVERTS|COULD_NOT_REVERT]->(a:Action)
 MATCH (ag:Agent)-[:RAN]->(:Run)-[:HAS]->(:Step)-[:DID]->(a)
-OPTIONAL MATCH (a)-[:CAUSED]->(:Effect)-[:ON]->(e:Entity)
-WITH p, root, r, a, ag, head(collect(e.type + ':' + e.key)) AS entity
+WITH p, root, r, a, ag
 ORDER BY r.order
 RETURN p.id AS id, root.id AS rootId, p.ts AS ts, p.status AS status, p.summary AS summary,
   p.depth AS depth,
   collect({actionId: a.id, tool: a.tool, seq: a.seq, status: a.status, agentId: ag.id,
-    order: r.order, mode: r.mode, label: r.label, hops: r.hops, via: r.via, entity: entity}) AS steps;
+    order: r.order, mode: r.mode, label: r.label, hops: r.hops, via: r.via, entity: r.entity}) AS steps;
 
 // P3 · Plan status (write)
 // answers: marks a plan rehearsed, executing, executed, partial or conflict
@@ -358,6 +359,12 @@ RETURN pol.id AS id;
 MATCH (pol:Policy {id: $policyId}), (a:Action {id: $actionId})
 CREATE (pol)-[:BLOCKED {ts: $ts}]->(a)
 RETURN a.id AS id;
+
+// P7 · Already compensated? (read)
+// answers: has an undo or mitigation action already been recorded for this original (UNDOES)?
+MATCH (:Action)-[u:UNDOES]->(:Action {id: $actionId})
+WHERE ID(u) >= 0
+RETURN count(u) AS n;
 
 // ==============================================================================================
 // Views for the UI and the agents

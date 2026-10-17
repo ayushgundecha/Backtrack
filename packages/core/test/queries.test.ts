@@ -231,6 +231,7 @@ describe('query catalogue on the golden demo graph', () => {
       stepLabels: ['restore_address ord_1001 (update_address)'],
       stepHops: [0],
       stepVia: ['[]'],
+      stepEntities: ['order:ord_1001'],
       stepMitigations: [null],
     });
     const byEntity = await q13Recall(g, {

@@ -388,8 +388,9 @@ export const decideAction = define<
   answers: 'records who approved or denied a pending action, when and why',
   mode: 'write',
   // Two FOREACH branches because the relationship type cannot be a parameter.
+  // Idempotent: only the first decision on a pending action counts.
   text: `MATCH (u:User {id: $userId}), (a:Action {id: $actionId})
-WHERE a.status = 'pending'
+WHERE a.status = 'pending' AND NOT (a)<-[:APPROVED]-(:User) AND NOT (a)<-[:DENIED]-(:User)
 FOREACH (_ IN CASE WHEN $approved THEN [1] ELSE [] END |
   CREATE (u)-[:APPROVED {ts: $ts, reason: $reason}]->(a))
 FOREACH (_ IN CASE WHEN $approved THEN [] ELSE [1] END |
@@ -428,6 +429,7 @@ export const createPlan = define<
     stepLabels: string[];
     stepHops: number[];
     stepVia: string[];
+    stepEntities: Array<string | null>;
     stepMitigations: Array<string | null>;
   },
   { steps: number }
@@ -445,10 +447,11 @@ UNWIND range(0, size($stepIds) - 1) AS i
 MATCH (a:Action {id: $stepIds[i]})
 FOREACH (_ IN CASE WHEN $stepModes[i] = 'mitigation' THEN [1] ELSE [] END |
   CREATE (p)-[:COULD_NOT_REVERT {order: i + 1, mode: $stepModes[i], label: $stepLabels[i],
-    hops: $stepHops[i], via: $stepVia[i], mitigation: $stepMitigations[i]}]->(a))
+    hops: $stepHops[i], via: $stepVia[i], entity: $stepEntities[i],
+    mitigation: $stepMitigations[i]}]->(a))
 FOREACH (_ IN CASE WHEN $stepModes[i] = 'mitigation' THEN [] ELSE [1] END |
   CREATE (p)-[:REVERTS {order: i + 1, mode: $stepModes[i], label: $stepLabels[i],
-    hops: $stepHops[i], via: $stepVia[i]}]->(a))
+    hops: $stepHops[i], via: $stepVia[i], entity: $stepEntities[i]}]->(a))
 RETURN count(a) AS steps`,
 });
 
@@ -482,13 +485,12 @@ export const getPlan = define<{ planId: string }, PlanRow>({
   text: `MATCH (p:UndoPlan {id: $planId})-[:ROOT]->(root:Action)
 MATCH (p)-[r:REVERTS|COULD_NOT_REVERT]->(a:Action)
 MATCH (ag:Agent)-[:RAN]->(:Run)-[:HAS]->(:Step)-[:DID]->(a)
-OPTIONAL MATCH (a)-[:CAUSED]->(:Effect)-[:ON]->(e:Entity)
-WITH p, root, r, a, ag, head(collect(e.type + ':' + e.key)) AS entity
+WITH p, root, r, a, ag
 ORDER BY r.order
 RETURN p.id AS id, root.id AS rootId, p.ts AS ts, p.status AS status, p.summary AS summary,
   p.depth AS depth,
   collect({actionId: a.id, tool: a.tool, seq: a.seq, status: a.status, agentId: ag.id,
-    order: r.order, mode: r.mode, label: r.label, hops: r.hops, via: r.via, entity: entity}) AS steps`,
+    order: r.order, mode: r.mode, label: r.label, hops: r.hops, via: r.via, entity: r.entity}) AS steps`,
 });
 
 export const setPlanStatus = define<{ planId: string; status: string }, { id: string }>({
@@ -510,6 +512,16 @@ export const markConflict = define<
   text: `MATCH (p:UndoPlan {id: $planId}), (a:Action {id: $actionId})
 CREATE (p)-[:CONFLICT {reason: $reason}]->(a)
 RETURN a.id AS id`,
+});
+
+export const compensations = define<{ actionId: string }, { n: number }>({
+  id: 'P7',
+  title: 'Already compensated?',
+  answers: 'has an undo or mitigation action already been recorded for this original (UNDOES)?',
+  mode: 'read',
+  text: `MATCH (:Action)-[u:UNDOES]->(:Action {id: $actionId})
+WHERE ID(u) >= 0
+RETURN count(u) AS n`,
 });
 
 export const createPolicy = define<
@@ -695,7 +707,7 @@ export interface UndoOrderRow {
   reversible: boolean;
   inverseTool: string | null;
   mitigationTool: string | null;
-  entities: Array<{ type: string | null; key: string | null; display: string | null }>;
+  entities: Array<{ type: string; key: string; display: string | null; kind: string }>;
 }
 
 export const q2UndoOrder = define<{ actionIds: string[] }, UndoOrderRow>({
@@ -706,8 +718,9 @@ export const q2UndoOrder = define<{ actionIds: string[] }, UndoOrderRow>({
   mode: 'read',
   text: `MATCH (a:Action)
 WHERE a.id IN $actionIds
-OPTIONAL MATCH (a)-[:CAUSED]->(:Effect)-[:ON]->(e:Entity)
-WITH a, collect(DISTINCT {type: e.type, key: e.key, display: e.display}) AS entities
+OPTIONAL MATCH (a)-[:CAUSED]->(f:Effect)-[:ON]->(e:Entity)
+WITH a, f, e ORDER BY f.id
+WITH a, [x IN collect({type: e.type, key: e.key, display: e.display, kind: f.kind}) WHERE x.key IS NOT NULL] AS entities
 RETURN a.id AS id, a.tool AS tool, a.seq AS seq, a.status AS status, a.reversible AS reversible,
   a.inverse_tool AS inverseTool, a.mitigation_tool AS mitigationTool, entities
 ORDER BY seq DESC`,
