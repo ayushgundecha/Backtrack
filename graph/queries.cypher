@@ -95,6 +95,40 @@ WHERE ag.id <> rag.id
 RETURN ag.id AS agentId, d.id AS actionId, d.tool AS tool, min(length(p)) AS hops
 ORDER BY hops, actionId;
 
+// Q8 · Load-bearing actions (PageRank) (read)
+// answers: which actions does the most other work rest on? (PageRank over DEPENDS_ON: rank flows from dependents to what they depend on)
+CALL algo.pageRank('Action', 'DEPENDS_ON') YIELD node, score
+WITH node, score WHERE node.kind = 'do'
+OPTIONAL MATCH (ag:Agent)-[:RAN]->(:Run)-[:HAS]->(:Step)-[:DID]->(node)
+RETURN node.id AS id, node.tool AS tool, node.seq AS seq, node.status AS status, ag.id AS agentId, score
+ORDER BY score DESC, seq
+LIMIT $limit;
+
+// Q9 · Hinge actions (betweenness) (read)
+// answers: which actions sit on the most dependency paths between other actions, so that undoing them splits the history?
+CALL algo.betweenness({nodeLabels: ['Action'], relationshipTypes: ['DEPENDS_ON']}) YIELD node, score
+WITH node, score WHERE node.kind = 'do'
+OPTIONAL MATCH (ag:Agent)-[:RAN]->(:Run)-[:HAS]->(:Step)-[:DID]->(node)
+RETURN node.id AS id, node.tool AS tool, node.seq AS seq, node.status AS status, ag.id AS agentId, score
+ORDER BY score DESC, seq
+LIMIT $limit;
+
+// Q10 · Independent clusters (weakly connected components) (read)
+// answers: which groups of actions are independent of each other, so that undoing one group cannot touch another?
+CALL algo.wcc({nodeLabels: ['Action'], relationshipTypes: ['DEPENDS_ON']}) YIELD node, componentId
+WITH componentId, node ORDER BY node.seq
+WITH componentId, collect({id: node.id, tool: node.tool, seq: node.seq}) AS actions
+RETURN componentId, size(actions) AS size, actions
+ORDER BY size DESC, componentId;
+
+// Q11 · Dependency path between two actions (SPpaths) (read)
+// answers: how does a later action depend on an earlier one: the shortest DEPENDS_ON route from the earlier action to the later?
+MATCH (s:Action {id: $from}), (t:Action {id: $to})
+CALL algo.SPpaths({sourceNode: s, targetNode: t, relTypes: ['DEPENDS_ON'], weightProp: 'weight',
+  relDirection: 'incoming', pathCount: 1, maxLen: 10})
+YIELD path, pathWeight
+RETURN [n IN nodes(path) | n.id] AS ids, [n IN nodes(path) | n.tool] AS tools, pathWeight;
+
 // Q12 · Entity history across runs and agents (read)
 // answers: who changed this entity, when, in which run, from what to what?
 MATCH (e:Entity {type: $type, key: $key})<-[:ON]-(f:Effect)<-[:CAUSED]-(a:Action)
@@ -126,6 +160,16 @@ WITH f, e, [w IN collect(DISTINCT later) | {id: w.id, tool: w.tool, seq: w.seq}]
 RETURN f.id AS effectId, f.kind AS kind, f.field AS field, f.before AS before, f.after AS after,
   e.type AS type, e.key AS key, e.display AS display, e.state AS state, laterWriters
 ORDER BY effectId;
+
+// Q15 · Rehearsal diff: entity states a plan touches (read)
+// answers: what state is every entity this plan touches in, in this graph? Run on the live graph and on the GRAPH.COPY fork after the rehearsal; the difference is the diff.
+MATCH (:UndoPlan {id: $planId})-[:REVERTS|COULD_NOT_REVERT]->(a:Action)
+OPTIONAL MATCH (a)-[:CAUSED]->(:Effect)-[:ON]->(e1:Entity)
+OPTIONAL MATCH (a)<-[:UNDOES]-(:Action)-[:CAUSED]->(:Effect)-[:ON]->(e2:Entity)
+WITH collect(DISTINCT e1) + collect(DISTINCT e2) AS touched
+UNWIND touched AS e
+RETURN DISTINCT e.type AS type, e.key AS key, e.state AS state
+ORDER BY type, key;
 
 // ==============================================================================================
 // Schema and meta

@@ -106,6 +106,18 @@ log(
   ).rows,
 );
 
+log(
+  'algo.SPpaths a1 -> a3 (relDirection incoming: from a root to its dependent, maxLen)',
+  (
+    await g.read(
+      `MATCH (s:Action {id:'a1'}), (t:Action {id:'a3'})
+       CALL algo.SPpaths({sourceNode: s, targetNode: t, relTypes: ['DEPENDS_ON'], weightProp: 'weight', relDirection: 'incoming', pathCount: 1, maxLen: 10})
+       YIELD path, pathWeight
+       RETURN [n IN nodes(path) | n.id] AS hops, pathWeight`,
+    )
+  ).rows,
+);
+
 // 5. Pattern predicate in WHERE (we avoid EXISTS {} subqueries)
 log(
   'pattern predicate',
