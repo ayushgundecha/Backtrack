@@ -29,6 +29,14 @@ pnpm typecheck && pnpm lint && pnpm test
 - If something needs credentials, a contract change or a product decision, leave a comment on the issue and move on; do not guess.
 - New ideas go to `docs/later.md`, not into scope.
 
+## Design and UI work
+The UI spec is `docs/PLAN.md` §7.3 and the tokens are `docs/design-system.md` (overrides the generated proposal in `design-system/backtrack/`). For any issue in `apps/web`, use the project skills in `.agents/skills/` in this order:
+1. `ui-ux-pro-max` — before building a screen or component, run `python3 .agents/skills/ui-ux-pro-max/scripts/search.py "<what you are building>" --domain ux` (and `--domain style|typography|chart` as needed) and apply the guidance; the design-system baseline is already persisted under `design-system/backtrack/`.
+2. `frontend-design` — read it before any visual decision; avoid the generic tells it lists (gradient-accent stats, one highlighted word, all-caps labels, scattered entrance animations).
+3. `web-design-guidelines` — run its review against every component before closing the issue (accessibility, forms, motion, dark mode).
+4. `vercel-react-best-practices` and `vercel-composition-patterns` — for component structure, data loading and performance.
+Non-negotiables from the spec: one accent color for selection, amber for pending/approval, red for irreversible, green for reverted; one animation per change under 400 ms, only the pending pulse loops; every number on screen names the query that produced it; reduced motion respected; 4.5:1 contrast; keyboard reachable with visible focus.
+
 ## Stack (approved dependencies)
 pnpm 12 · TypeScript 5 strict · Biome · Vitest · `falkordb` · `zod` 4 · `ai` 7 + `@openrouter/ai-sdk-provider` 3 · `@modelcontextprotocol/sdk` · Next.js 16 (App Router) · Tailwind · shadcn/ui · framer-motion · `react-force-graph-2d`. Anything else: note it in the issue first.
 
