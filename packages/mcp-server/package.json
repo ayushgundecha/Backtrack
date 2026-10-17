@@ -1,0 +1,26 @@
+{
+  "name": "@backtrack/mcp-server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Backtrack's graph tools over MCP (stdio): plan, rehearse and execute undos from Claude Desktop or Cursor.",
+  "bin": {
+    "backtrack-mcp": "./bin/backtrack-mcp.js"
+  },
+  "scripts": {
+    "start": "node bin/backtrack-mcp.js",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@backtrack/core": "workspace:*",
+    "@modelcontextprotocol/sdk": "^1.32.1",
+    "tsx": "^4.23.15",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.7"
+  }
+}

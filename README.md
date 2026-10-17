@@ -344,18 +344,16 @@ fixtures/            synthetic world seed and the golden ops and billing runs
 
 ## MCP setup
 
-The graph tools the undo agent uses are also an MCP server, with one definition shared by both: `list_actions`, `resolve_action`, `plan_undo` (depth), `rehearse_undo`, `execute_undo` (`confirmed: true`), `explain_action`, `entity_history`, `recall`, `load_bearing`, `hinge_actions`, `independent_clusters`, `path_between`, `set_policy`. The model picks a tool and fills flat arguments; it never writes Cypher, and `resolve_action` validates every id against the graph first.
+The graph tools the undo agent uses are also an MCP server, with one definition shared by both: `list_actions`, `resolve_action`, `plan_undo` (depth), `rehearse_undo`, `execute_undo` (`confirmed: true`), `explain_action`, `entity_history`, `recall`, `blast_radius`, `load_bearing`, `hinge_actions`, `independent_clusters`, `path_between`, `set_policy`. The model picks a tool and fills flat arguments; it never writes Cypher, and `resolve_action` validates every id against the graph first. Every answer comes back as `{ result, evidence }`, where `evidence` names the queries (Q1–Q15) that produced it. `execute_undo` is marked destructive, so clients ask before calling it.
 
-<!-- TODO(BT-038): confirm the command and env once packages/mcp-server lands -->
-
-Claude Desktop (`claude_desktop_config.json`) or Cursor (`.cursor/mcp.json`):
+The server is not published to npm; it runs from a clone after `pnpm install`. Claude Desktop (`claude_desktop_config.json`) or Cursor (`.cursor/mcp.json`), with the absolute path to your clone:
 
 ```json
 {
   "mcpServers": {
     "backtrack": {
-      "command": "npx",
-      "args": ["@backtrack/mcp-server"],
+      "command": "node",
+      "args": ["/path/to/backtrack/packages/mcp-server/bin/backtrack-mcp.js"],
       "env": {
         "FALKORDB_HOST": "localhost",
         "FALKORDB_PORT": "6379",
@@ -365,6 +363,8 @@ Claude Desktop (`claude_desktop_config.json`) or Cursor (`.cursor/mcp.json`):
   }
 }
 ```
+
+To try it without a client: `npx @modelcontextprotocol/inspector node packages/mcp-server/bin/backtrack-mcp.js`.
 
 ## Local setup, environment and deploy
 
