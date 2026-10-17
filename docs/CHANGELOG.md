@@ -2,6 +2,7 @@
 
 One line per completed task, newest first. Format: `BT-0xx — what changed (how it was verified)`.
 
+- BT-032 — agents/replay.ts replays the golden fixtures through the real recorder and gate; `pnpm demo:replay` and `pnpm demo:undo` CLIs; FalkorDB Browser screenshot in docs/media (`pnpm test`: replay.test.ts; `pnpm demo:replay --approve --billing --fast` then `pnpm demo:undo "undo the address change" --depth 3 --rehearse` executed the 6-step plan)
 - BT-031 — billing tools discover the ops agent's ticket from the graph and apply a revocable credit (`pnpm test`: tools.billing.test.ts, incl. fixtures → golden graph end to end)
 - BT-030 — the six ops tools with their inverses and the draft_correction_email mitigation, each returning what it read and wrote (`pnpm test`: tools.ops.test.ts, one case per tool)
 - BT-025 — rehearseUndo runs the plan on a GRAPH.COPY fork, diffs it against live and deletes the fork (`pnpm test`: rehearse.test.ts; the rehearsal diff equals the real execution's diff)
