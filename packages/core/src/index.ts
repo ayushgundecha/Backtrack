@@ -7,6 +7,7 @@ export * from './sdk/gate.js';
 export * from './sdk/inverse.js';
 export * from './sdk/recorder.js';
 export * from './sdk/registry.js';
+export * from './sdk/rehearse.js';
 export * from './sdk/resolve.js';
 export * from './sdk/run.js';
 export * from './sdk/trace.js';

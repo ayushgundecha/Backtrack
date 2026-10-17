@@ -2,6 +2,8 @@
 
 One line per completed task, newest first. Format: `BT-0xx — what changed (how it was verified)`.
 
+- BT-025 — rehearseUndo runs the plan on a GRAPH.COPY fork, diffs it against live and deletes the fork (`pnpm test`: rehearse.test.ts; the rehearsal diff equals the real execution's diff)
+- BT-015 — Q15 returns the state of every entity a plan touches, live or on the fork (`pnpm test`: rehearse.test.ts)
 - BT-014 — Q8–Q11 run FalkorDB's pageRank, betweenness, wcc and SPpaths over DEPENDS_ON (weight 1) (`pnpm test`: algorithms.test.ts on the golden graph; spike covers SPpaths incoming)
 - BT-024 — sdk/gate.ts: policies (Q5) then lock-in (Q4) decide approve / ask / deny with a row-built reason; approvals are User edges; sdk/run.ts gates and records every tool call (`pnpm test`: gate.test.ts, run.test.ts)
 - BT-023 — executeUndo: an undo Run per plan, Q14 conflict check, restore or mitigation, UNDOES/REVERTS/COULD_NOT_REVERT/CONFLICT, idempotent re-run (`pnpm test`: undo.test.ts)
