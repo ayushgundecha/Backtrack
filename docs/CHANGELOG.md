@@ -2,6 +2,8 @@
 
 One line per completed task, newest first. Format: `BT-0xx — what changed (how it was verified)`.
 
+- BT-044 — UndoConsole, PlanCard and the four outcome cards; Rehearse diff; Confirm ticks advance only on undo.step events; ⌘Z/Ctrl+Z focuses the console outside text fields (`pnpm test`: web reducer/outcome tests; screenshots of each outcome, mid-execution and executed at 1440/1100/390, inspected)
+- BT-043 — RunStream, StepCard, TraceStrip (Cypher, ms, rows, copy) and ApprovalCard with the gate's reason verbatim, resolved only through ApiClient.approval (`pnpm test`: web session tests; screenshots streaming/pending/approved/denied at 1440/1100/390, inspected)
 - BT-038 — packages/mcp-server: the graph tools over MCP stdio (same definitions as the undo agent), answers as `{ result, evidence }`, read-only/destructive hints; README config snippet (`pnpm test`: server.test.ts over an in-memory MCP client; stdio smoke of bin/backtrack-mcp.js listed all 14 tools)
 - BT-03A — recall (Q13) is a graph tool the ops and billing agents carry, and both agents' instructions call it before acting (`pnpm test`: live.test.ts scripted runs; tools.graph.test.ts recall after an executed plan)
 - BT-036 — agents/undo.ts: read-only undo agent; the outcome is whatever plan_undo returned and the model's sentence passes validateSummary or is replaced by the template; no plan_undo call or a failed model → the engine answers (`pnpm test`: undo-agent.test.ts with a mock model)
