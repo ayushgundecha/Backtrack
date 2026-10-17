@@ -26,6 +26,8 @@ export interface ApprovalView {
   wouldLock: number;
   lockedTools: string[];
   state: 'pending' | 'approved' | 'denied';
+  /** Who answered (from approval.resolved); null while pending. */
+  by: string | null;
 }
 
 export interface StepView {
@@ -39,7 +41,7 @@ export interface StepView {
   dependsOn: string[];
   trace: EventOf<'action.recorded'>['trace'] | null;
   approval: ApprovalView | null;
-  blocked: { policyId: string; rule: string } | null;
+  blocked: { actionId: string; tool: string; policyId: string; rule: string } | null;
 }
 
 export interface UndoExecutionView {
@@ -139,7 +141,7 @@ export function sessionReducer(state: SessionState, action: SessionAction): Sess
         steps: updateStep(
           state.steps,
           (s) => s.runId === action.runId,
-          (s) => ({ ...s, approval: { ...request, state: 'pending' } }),
+          (s) => ({ ...s, approval: { ...request, state: 'pending', by: null } }),
         ),
       };
     }
@@ -154,7 +156,11 @@ export function sessionReducer(state: SessionState, action: SessionAction): Sess
             s.approval
               ? {
                   ...s,
-                  approval: { ...s.approval, state: action.approved ? 'approved' : 'denied' },
+                  approval: {
+                    ...s.approval,
+                    state: action.approved ? 'approved' : 'denied',
+                    by: action.by,
+                  },
                 }
               : s,
         ),
@@ -165,7 +171,15 @@ export function sessionReducer(state: SessionState, action: SessionAction): Sess
         steps: updateStep(
           state.steps,
           (s) => s.runId === action.runId,
-          (s) => ({ ...s, blocked: { policyId: action.policyId, rule: action.rule } }),
+          (s) => ({
+            ...s,
+            blocked: {
+              actionId: action.actionId,
+              tool: action.tool,
+              policyId: action.policyId,
+              rule: action.rule,
+            },
+          }),
         ),
       };
     case 'run.finished':

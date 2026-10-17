@@ -41,7 +41,8 @@ interface BacktrackState {
 
 interface BacktrackActions {
   runAgent(agent: AgentId, mode: RunMode): void;
-  answerApproval(runId: string, actionId: string, approved: boolean): void;
+  /** Resolves true once the run accepted the answer; false (with a toast) otherwise. */
+  answerApproval(runId: string, actionId: string, approved: boolean): Promise<boolean>;
   resetWorld(): void;
   requestUndo(text: string): Promise<void>;
 }
@@ -163,16 +164,17 @@ export function BacktrackProvider({
       runAgent(agent, mode) {
         void consume((signal) => (client as ApiClient).runAgent({ agent, mode }, signal));
       },
-      answerApproval(runId, actionId, approved) {
-        client
-          ?.approval({ runId, actionId, approved })
-          .then(({ ok }) => {
-            if (!ok)
-              toast.error(
-                `Approval for ${actionId} was not accepted: the run is no longer waiting.`,
-              );
-          })
-          .catch((error: unknown) => toast.error(messageOf(error)));
+      async answerApproval(runId, actionId, approved) {
+        if (!client) return false;
+        try {
+          const { ok } = await client.approval({ runId, actionId, approved });
+          if (!ok)
+            toast.error(`Approval for ${actionId} was not accepted: the run is no longer waiting.`);
+          return ok;
+        } catch (error) {
+          toast.error(messageOf(error));
+          return false;
+        }
       },
       resetWorld() {
         if (!client) return;

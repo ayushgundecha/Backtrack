@@ -1,15 +1,12 @@
 'use client';
 
-import { Ban } from 'lucide-react';
+import { Ban, Link2 } from 'lucide-react';
+import { type ActionRef, formatArgs, stepCall, stepPhase } from '@/lib/run-view';
 import type { StepView } from '@/lib/session';
+import { familyDotClass, familyOf } from '@/lib/tools';
 import { ApprovalCard } from './ApprovalCard';
 import { StatusBadge } from './StatusBadge';
 import { TraceStrip } from './TraceStrip';
-
-const formatArgs = (args: Record<string, unknown>) =>
-  Object.entries(args)
-    .map(([key, value]) => `${key}: ${JSON.stringify(value)}`)
-    .join(', ');
 
 const idOf = (value: unknown) =>
   value && typeof value === 'object' && 'id' in value ? String(value.id) : null;
@@ -33,39 +30,78 @@ function resultLine(result: unknown): string {
   return JSON.stringify(result);
 }
 
-export function StepCard({ step }: { step: StepView }) {
+/** The status pill for the phases that have no recorded action yet. */
+const phaseStatus = {
+  calling: null,
+  'awaiting-approval': 'pending',
+  denied: 'denied',
+  blocked: 'blocked',
+  recorded: null,
+} as const;
+
+/**
+ * One agent step, filled in as its events arrive: the thought (step), then the tool call and
+ * result (action.recorded), or the gate (approval.requested / resolved), or a policy block.
+ */
+export function StepCard({ step, actions }: { step: StepView; actions: Map<string, ActionRef> }) {
   const { action, approval, blocked } = step;
+  const call = stepCall(step);
+  const phase = stepPhase(step);
+  const status = action?.status ?? phaseStatus[phase];
+  // DEPENDS_ON comes with the recorded event; naming it by tool and seq is the graph's "why".
+  const dependsOn = step.dependsOn.map((id) => ({ id, ref: actions.get(id) }));
+
   return (
-    <li>
+    <li className="fade-in-0 slide-in-from-bottom-1 animate-in duration-300">
       <article
-        aria-label={`Step ${step.index + 1}`}
+        aria-label={`Step ${step.index + 1}${call ? `: ${call.tool}` : ''}`}
         className="flex flex-col gap-2 rounded-lg border bg-surface p-3"
       >
         <div className="flex items-center gap-2 text-fg-muted text-xs">
           <span>Step {step.index + 1}</span>
           {action ? <span className="font-mono">seq {action.seq}</span> : null}
-          {action ? <StatusBadge status={action.status} className="ml-auto" /> : null}
+          {status ? <StatusBadge status={status} className="ml-auto" /> : null}
         </div>
         <p className="text-fg italic">{step.thought}</p>
-        {action ? (
-          <>
-            <p className="flex min-w-0 items-baseline gap-2">
-              <code className="shrink-0 rounded-sm bg-surface-2 px-1.5 py-0.5 font-mono text-code">
-                {action.tool}
-              </code>
+        {call ? (
+          <p className="flex min-w-0 items-center gap-2">
+            <code className="flex shrink-0 items-center gap-1.5 rounded-sm bg-surface-2 px-1.5 py-0.5 font-mono text-code">
+              <span
+                aria-hidden
+                className={`size-2 rounded-full ${familyDotClass[familyOf(call.tool)]}`}
+              />
+              {call.tool}
+            </code>
+            {Object.keys(call.args).length > 0 ? (
               <code
                 className="truncate font-mono text-code text-fg-muted"
-                title={formatArgs(action.args)}
+                title={formatArgs(call.args)}
               >
-                {formatArgs(action.args)}
+                {formatArgs(call.args)}
               </code>
-            </p>
-            <p className="line-clamp-2 text-fg-muted text-sm">{resultLine(action.result)}</p>
-          </>
+            ) : null}
+          </p>
+        ) : (
+          <p className="text-fg-muted text-sm">Waiting for the tool call…</p>
+        )}
+        {action ? (
+          <p className="line-clamp-2 text-fg-muted text-sm">{resultLine(action.result)}</p>
+        ) : null}
+        {dependsOn.length > 0 ? (
+          <p className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-fg-muted text-xs">
+            <Link2 aria-hidden className="size-3.5" />
+            <span>Depends on</span>
+            {dependsOn.map(({ id, ref }, i) => (
+              <span key={id} className="font-mono">
+                {ref ? `${ref.tool} (seq ${ref.seq})` : id}
+                {i < dependsOn.length - 1 ? ',' : ''}
+              </span>
+            ))}
+          </p>
         ) : null}
         {blocked ? (
           <p className="flex items-center gap-2 text-red text-sm">
-            <Ban aria-hidden className="size-4" />
+            <Ban aria-hidden className="size-4 shrink-0" />
             Blocked by policy {blocked.policyId}: {blocked.rule}
           </p>
         ) : null}

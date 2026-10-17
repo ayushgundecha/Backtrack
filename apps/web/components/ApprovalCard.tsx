@@ -1,50 +1,84 @@
 'use client';
 
 import { Check, ShieldAlert, X } from 'lucide-react';
+import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import type { ApprovalView } from '@/lib/session';
 import { useBacktrack } from './BacktrackProvider';
 
 /**
  * The graph-driven gate (Q4): an irreversible call paused because it would lock in reversible
- * changes. The reason is the query's answer, shown verbatim; the human decides.
+ * changes. The reason is the query's answer, shown verbatim as the event carries it; the panel
+ * never rephrases it, so what is on screen is exactly what the graph returned.
  */
 export function ApprovalCard({ approval }: { approval: ApprovalView }) {
   const { actions } = useBacktrack();
-  const answer = (approved: boolean) =>
-    actions.answerApproval(approval.runId, approval.actionId, approved);
+  // Disables both buttons while the answer is in flight so one click cannot become two answers.
+  const [sending, setSending] = useState<boolean | null>(null);
+  const pending = approval.state === 'pending';
+
+  const answer = async (approved: boolean) => {
+    setSending(approved);
+    const ok = await actions.answerApproval(approval.runId, approval.actionId, approved);
+    // On success the card re-renders from approval.resolved; on failure the buttons come back.
+    if (!ok) setSending(null);
+  };
 
   return (
     <section
       aria-label={`Approval for ${approval.tool}`}
-      className="flex flex-col gap-3 rounded-lg border border-amber/70 bg-amber/5 p-3"
+      className={
+        pending
+          ? 'flex flex-col gap-3 rounded-lg border border-amber/70 bg-amber/5 p-3'
+          : 'flex flex-col gap-3 rounded-lg border bg-surface-2/40 p-3'
+      }
     >
       <div className="flex items-center gap-2">
-        <ShieldAlert aria-hidden className="size-4 text-amber" />
-        <h4 className="font-medium text-sm">
-          {approval.state === 'pending' ? 'Approval needed' : 'Approval answered'}
-        </h4>
-        <code className="ml-auto font-mono text-code text-fg-muted">{approval.tool}</code>
+        {pending ? (
+          <span aria-hidden className="pending-pulse size-2 shrink-0 rounded-full bg-amber" />
+        ) : (
+          <ShieldAlert aria-hidden className="size-4 shrink-0 text-fg-muted" />
+        )}
+        <h4 className="font-medium text-sm">{pending ? 'Approval needed' : 'Approval answered'}</h4>
+        <span className="ml-auto text-fg-muted text-xs">Gate · Q4 lock-in</span>
       </div>
-      <p className="text-sm">
-        <span className="font-mono">{approval.tool}</span> cannot be undone. It {approval.reason}.
-      </p>
-      {approval.state === 'pending' ? (
-        <div className="flex gap-2">
-          <Button size="lg" onClick={() => answer(true)}>
+      <div className="flex flex-col gap-1">
+        <p className="text-sm">
+          <code className="font-mono text-code">{approval.tool}</code> cannot be undone. The graph
+          says it
+        </p>
+        <p className="border-amber/60 border-l-2 pl-2.5 font-medium text-fg text-sm">
+          {approval.reason}
+        </p>
+      </div>
+      {pending ? (
+        <div className="flex flex-wrap gap-2">
+          <Button size="lg" disabled={sending !== null} onClick={() => answer(true)}>
             <Check aria-hidden />
-            Approve
+            {sending === true ? 'Approving…' : 'Approve'}
           </Button>
-          <Button size="lg" variant="destructive" onClick={() => answer(false)}>
+          <Button
+            size="lg"
+            variant="destructive"
+            disabled={sending !== null}
+            onClick={() => answer(false)}
+          >
             <X aria-hidden />
-            Deny
+            {sending === false ? 'Denying…' : 'Deny'}
           </Button>
         </div>
       ) : (
-        <p className={approval.state === 'approved' ? 'text-green text-sm' : 'text-red text-sm'}>
+        <p
+          className={`flex items-center gap-1.5 text-sm ${approval.state === 'approved' ? 'text-green' : 'text-red'}`}
+        >
+          {approval.state === 'approved' ? (
+            <Check aria-hidden className="size-4" />
+          ) : (
+            <X aria-hidden className="size-4" />
+          )}
           {approval.state === 'approved'
-            ? 'Approved by you.'
-            : 'Denied by you. The call was not made.'}
+            ? `Approved by ${approval.by ?? 'a human'}.`
+            : `Denied by ${approval.by ?? 'a human'}. ${approval.tool} was not run.`}
         </p>
       )}
     </section>
