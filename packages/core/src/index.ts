@@ -1,6 +1,7 @@
 export * from './agents/fixtures.js';
 export * from './agents/replay.js';
 export * from './agents/tools.billing.js';
+export * from './agents/tools.graph.js';
 export * from './agents/tools.js';
 export * from './agents/tools.ops.js';
 export * from './contracts/index.js';

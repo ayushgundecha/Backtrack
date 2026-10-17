@@ -1,0 +1,291 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`graph tools > expose the catalogue from PLAN §6 with flat, stable schemas 1`] = `
+[
+  {
+    "description": "List every recorded agent action in order: id, seq, tool, status, agent and a short label.",
+    "input": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "properties": {
+        "agentId": {
+          "enum": [
+            "ops-agent",
+            "billing-agent",
+            "backtrack",
+          ],
+          "type": "string",
+        },
+      },
+      "type": "object",
+    },
+    "name": "list_actions",
+  },
+  {
+    "description": "Find the recorded action a request refers to, by id or by words ("the address change"). Returns the action, or up to three candidates when the request does not single one out.",
+    "input": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "properties": {
+        "actionId": {
+          "description": "An action id from list_actions, e.g. act_ab12cd34",
+          "type": "string",
+        },
+        "text": {
+          "description": "What the person said, e.g. "undo the address change"",
+          "type": "string",
+        },
+      },
+      "type": "object",
+    },
+    "name": "resolve_action",
+  },
+  {
+    "description": "Propose (never execute) an undo for an action: everything downstream of it up to \`depth\` hops, in reverse dependency order. Answers one of four outcomes: plan, memory (already undone), none (nothing to undo), unknown (with candidates).",
+    "input": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "properties": {
+        "actionId": {
+          "description": "An action id from list_actions, e.g. act_ab12cd34",
+          "type": "string",
+        },
+        "depth": {
+          "default": 5,
+          "description": "Hops of DEPENDS_ON to follow",
+          "maximum": 10,
+          "minimum": 1,
+          "type": "integer",
+        },
+        "text": {
+          "description": "The request in words, if there is no id",
+          "type": "string",
+        },
+      },
+      "type": "object",
+    },
+    "name": "plan_undo",
+  },
+  {
+    "description": "Run an undo plan on a throwaway copy of the graph (GRAPH.COPY) and return what would change, field by field. The live graph is not touched.",
+    "input": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "properties": {
+        "planId": {
+          "description": "An undo plan id returned by plan_undo, e.g. plan_ab12cd34",
+          "type": "string",
+        },
+      },
+      "required": [
+        "planId",
+      ],
+      "type": "object",
+    },
+    "name": "rehearse_undo",
+  },
+  {
+    "description": "Execute an undo plan for real. Only call this after the person has confirmed the plan; \`confirmed\` must be true.",
+    "input": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "properties": {
+        "confirmed": {
+          "const": true,
+          "description": "The person explicitly confirmed this plan",
+          "type": "boolean",
+        },
+        "planId": {
+          "description": "An undo plan id returned by plan_undo, e.g. plan_ab12cd34",
+          "type": "string",
+        },
+      },
+      "required": [
+        "planId",
+        "confirmed",
+      ],
+      "type": "object",
+    },
+    "name": "execute_undo",
+  },
+  {
+    "description": "Explain one action from the graph: the thought behind it, what it read (and who wrote that), what it changed, what it depends on and what depends on it.",
+    "input": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "properties": {
+        "actionId": {
+          "description": "An action id from list_actions, e.g. act_ab12cd34",
+          "type": "string",
+        },
+      },
+      "required": [
+        "actionId",
+      ],
+      "type": "object",
+    },
+    "name": "explain_action",
+  },
+  {
+    "description": "Every change ever made to one entity (order, ticket, message, email, event, credit), oldest first, with the action and agent behind each.",
+    "input": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "properties": {
+        "entityKey": {
+          "description": "e.g. ord_1001, tkt_1",
+          "type": "string",
+        },
+        "entityType": {
+          "enum": [
+            "customer",
+            "order",
+            "ticket",
+            "message",
+            "event",
+            "email",
+            "credit",
+          ],
+          "type": "string",
+        },
+      },
+      "required": [
+        "entityType",
+        "entityKey",
+      ],
+      "type": "object",
+    },
+    "name": "entity_history",
+  },
+  {
+    "description": "Have we undone this action, this tool, or changes to this entity before, and is there a policy about it? Call this before acting or planning.",
+    "input": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "properties": {
+        "actionId": {
+          "description": "An action id from list_actions, e.g. act_ab12cd34",
+          "type": "string",
+        },
+        "entityKey": {
+          "type": "string",
+        },
+        "entityType": {
+          "type": "string",
+        },
+        "tool": {
+          "description": "A tool name, e.g. update_address",
+          "type": "string",
+        },
+      },
+      "type": "object",
+    },
+    "name": "recall",
+  },
+  {
+    "description": "The actions the most other work rests on (PageRank over DEPENDS_ON). Undoing these has the widest consequences.",
+    "input": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "properties": {
+        "limit": {
+          "default": 5,
+          "description": "How many actions to return",
+          "maximum": 25,
+          "minimum": 1,
+          "type": "integer",
+        },
+      },
+      "type": "object",
+    },
+    "name": "load_bearing",
+  },
+  {
+    "description": "The actions that sit on the most dependency paths between other actions (betweenness centrality).",
+    "input": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "properties": {
+        "limit": {
+          "default": 5,
+          "description": "How many actions to return",
+          "maximum": 25,
+          "minimum": 1,
+          "type": "integer",
+        },
+      },
+      "type": "object",
+    },
+    "name": "hinge_actions",
+  },
+  {
+    "description": "Groups of actions that do not depend on each other (weakly connected components): undoing one group cannot affect another.",
+    "input": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "properties": {},
+      "type": "object",
+    },
+    "name": "independent_clusters",
+  },
+  {
+    "description": "How a later action came to depend on an earlier one: the shortest DEPENDS_ON path between them.",
+    "input": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "properties": {
+        "fromActionId": {
+          "description": "The earlier action",
+          "type": "string",
+        },
+        "toActionId": {
+          "description": "The later action",
+          "type": "string",
+        },
+      },
+      "required": [
+        "fromActionId",
+        "toActionId",
+      ],
+      "type": "object",
+    },
+    "name": "path_between",
+  },
+  {
+    "description": "Record a "never again" rule the gate enforces before every later tool call: block, confirm or warn, for a tool and/or an entity, optionally for one agent.",
+    "input": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "properties": {
+        "agentId": {
+          "enum": [
+            "ops-agent",
+            "billing-agent",
+          ],
+          "type": "string",
+        },
+        "entityKey": {
+          "type": "string",
+        },
+        "entityType": {
+          "type": "string",
+        },
+        "fromPlanId": {
+          "description": "The undo plan that prompted this rule",
+          "type": "string",
+        },
+        "kind": {
+          "enum": [
+            "block",
+            "confirm",
+            "warn",
+          ],
+          "type": "string",
+        },
+        "rule": {
+          "description": "The rule in plain words, shown when it fires",
+          "minLength": 1,
+          "type": "string",
+        },
+        "tool": {
+          "description": "The tool it applies to, e.g. update_address",
+          "type": "string",
+        },
+      },
+      "required": [
+        "rule",
+        "kind",
+      ],
+      "type": "object",
+    },
+    "name": "set_policy",
+  },
+]
+`;
