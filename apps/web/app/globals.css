@@ -1,0 +1,204 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+/*
+ * State variants the shadcn/ui primitives use (data-open:, data-active:, …), vendored from
+ * shadcn/tailwind.css (MIT) so the app does not depend on the shadcn CLI package at runtime.
+ */
+@custom-variant data-open {
+  &:where([data-state="open"]),
+  &:where([data-open]:not([data-open="false"])) {
+    @slot;
+  }
+}
+@custom-variant data-closed {
+  &:where([data-state="closed"]),
+  &:where([data-closed]:not([data-closed="false"])) {
+    @slot;
+  }
+}
+@custom-variant data-disabled {
+  &:where([data-disabled="true"]),
+  &:where([data-disabled]:not([data-disabled="false"])) {
+    @slot;
+  }
+}
+@custom-variant data-active {
+  &:where([data-state="active"]),
+  &:where([data-active]:not([data-active="false"])) {
+    @slot;
+  }
+}
+@custom-variant data-horizontal {
+  &:where([data-orientation="horizontal"]) {
+    @slot;
+  }
+}
+@custom-variant data-vertical {
+  &:where([data-orientation="vertical"]) {
+    @slot;
+  }
+}
+
+/*
+ * Backtrack design tokens (docs/design-system.md). Dark is the default; the light theme reuses the
+ * same names under [data-theme="light"], so components never branch on the theme.
+ * Color carries meaning only: accent = selected/changed, amber = pending, red = irreversible,
+ * green = reverted. Everything else is neutral.
+ */
+:root {
+  color-scheme: dark;
+  --bg: #070b14;
+  --surface: #0e1424;
+  --surface-2: #141c30;
+  --border: #243049;
+  --fg: #eef2f8;
+  --fg-muted: #93a1b8;
+  --accent: #4c8dff;
+  /* Text on an accent fill: white on #4C8DFF is 3.2:1, the page background is 6.2:1. */
+  --accent-fg: #070b14;
+  --amber: #f5b544;
+  --red: #f0564a;
+  --green: #3ecf8e;
+  --teal: #2fb8c6;
+  --grey-node: #5b6b85;
+  --ring: #4c8dff;
+  --radius: 0.5rem;
+  --ease-out-soft: cubic-bezier(0.2, 0.8, 0.2, 1);
+
+  /* shadcn/ui semantic names, mapped onto the tokens above so primitives inherit them. */
+  --background: var(--bg);
+  --foreground: var(--fg);
+  --card: var(--surface);
+  --card-foreground: var(--fg);
+  --popover: var(--surface-2);
+  --popover-foreground: var(--fg);
+  --primary: var(--accent);
+  --primary-foreground: var(--accent-fg);
+  --secondary: var(--surface-2);
+  --secondary-foreground: var(--fg);
+  --muted: var(--surface-2);
+  --muted-foreground: var(--fg-muted);
+  --destructive: var(--red);
+  --input: var(--border);
+}
+
+/* Light theme: same roles, each text color re-checked at >= 4.5:1 on --bg, --surface and --surface-2. */
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #f6f8fb;
+  --surface: #ffffff;
+  --surface-2: #edf1f7;
+  --border: #d3dbe7;
+  --fg: #0b1220;
+  --fg-muted: #4b5870;
+  --accent: #1f5fd6;
+  --accent-fg: #ffffff;
+  --amber: #9a5b00;
+  --red: #c2362b;
+  --green: #127a52;
+  --teal: #0b7480;
+  --grey-node: #64748b;
+  --ring: #1f5fd6;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-border: var(--border);
+  --color-fg: var(--fg);
+  --color-fg-muted: var(--fg-muted);
+  --color-accent: var(--accent);
+  --color-accent-fg: var(--accent-fg);
+  --color-amber: var(--amber);
+  --color-red: var(--red);
+  --color-green: var(--green);
+  --color-teal: var(--teal);
+  --color-grey-node: var(--grey-node);
+  --color-ring: var(--ring);
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-destructive: var(--destructive);
+  --color-input: var(--input);
+
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-heading: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-jetbrains-mono), ui-monospace, monospace;
+
+  /* One type scale: 12 / 13 / 14 / 16 / 20 / 28. 13 px is the code size. */
+  --text-code: 13px;
+  --text-code--line-height: 1.5;
+  --text-display: 28px;
+  --text-display--line-height: 1.2;
+
+  --radius-sm: calc(var(--radius) * 0.5);
+  --radius-md: calc(var(--radius) * 0.75);
+  --radius-lg: var(--radius);
+  --radius-xl: var(--radius);
+  --radius-2xl: var(--radius);
+  --radius-3xl: var(--radius);
+  --radius-4xl: 9999px;
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  html {
+    @apply bg-bg font-sans text-fg antialiased;
+    touch-action: manipulation;
+  }
+  body {
+    font-size: 14px;
+    line-height: 1.5;
+  }
+  /* One focus treatment everywhere: a 2 px ring offset by 2 px, keyboard only. */
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+}
+
+@layer utilities {
+  /* The only looping animation in the product: the amber ring on a pending action (1.2 s). */
+  .pending-pulse {
+    animation: pending-pulse 1.2s var(--ease-out-soft) infinite;
+  }
+}
+
+@keyframes pending-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in oklab, var(--amber) 55%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 4px color-mix(in oklab, var(--amber) 0%, transparent);
+  }
+}
+
+/*
+ * Reduced motion: no pulse, no transitions; state changes are instant. This rule is unlayered,
+ * so it beats every Tailwind layer (utilities included) without needing !important.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms;
+    animation-iteration-count: 1;
+    transition-duration: 0.01ms;
+    scroll-behavior: auto;
+  }
+}
