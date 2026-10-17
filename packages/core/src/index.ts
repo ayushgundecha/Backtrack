@@ -5,6 +5,7 @@ export * from './agents/live.js';
 export * from './agents/llm.js';
 export * from './agents/ops.js';
 export * from './agents/replay.js';
+export * from './agents/scripted.js';
 export * from './agents/tools.billing.js';
 export * from './agents/tools.graph.js';
 export * from './agents/tools.js';

@@ -2,6 +2,7 @@
 
 One line per completed task, newest first. Format: `BT-0xx — what changed (how it was verified)`.
 
+- BT-039 — agents/scripted.ts: a scripted model that plays a golden fixture through the real ToolLoopAgent, reading earlier tool results from the prompt to fill `$ref`s (`pnpm test`: scripted.test.ts — live tool loop and replay produce identical DEPENDS_ON edges, gate reasons and world)
 - BT-053 — public-URL hardening: 8 KB body cap and per-field text caps, per-client per-minute rate limits on every writing route (429 + Retry-After), one run or undo at a time per tenant checked in the graph (R9) so it holds across serverless instances; reset stays token-gated (`pnpm test`: limits.test.ts, routes.test.ts 413/400/429/409)
 - BT-044 — UndoConsole, PlanCard and the four outcome cards; Rehearse diff; Confirm ticks advance only on undo.step events; ⌘Z/Ctrl+Z focuses the console outside text fields (`pnpm test`: web reducer/outcome tests; screenshots of each outcome, mid-execution and executed at 1440/1100/390, inspected)
 - BT-043 — RunStream, StepCard, TraceStrip (Cypher, ms, rows, copy) and ApprovalCard with the gate's reason verbatim, resolved only through ApiClient.approval (`pnpm test`: web session tests; screenshots streaming/pending/approved/denied at 1440/1100/390, inspected)
