@@ -2,6 +2,8 @@
 
 One line per completed task, newest first. Format: `BT-0xx — what changed (how it was verified)`.
 
+- BT-031 — billing tools discover the ops agent's ticket from the graph and apply a revocable credit (`pnpm test`: tools.billing.test.ts, incl. fixtures → golden graph end to end)
+- BT-030 — the six ops tools with their inverses and the draft_correction_email mitigation, each returning what it read and wrote (`pnpm test`: tools.ops.test.ts, one case per tool)
 - BT-025 — rehearseUndo runs the plan on a GRAPH.COPY fork, diffs it against live and deletes the fork (`pnpm test`: rehearse.test.ts; the rehearsal diff equals the real execution's diff)
 - BT-015 — Q15 returns the state of every entity a plan touches, live or on the fork (`pnpm test`: rehearse.test.ts)
 - BT-014 — Q8–Q11 run FalkorDB's pageRank, betweenness, wcc and SPpaths over DEPENDS_ON (weight 1) (`pnpm test`: algorithms.test.ts on the golden graph; spike covers SPpaths incoming)
