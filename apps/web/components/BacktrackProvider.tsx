@@ -7,6 +7,7 @@
  */
 import type {
   AgentId,
+  Explain,
   GraphSnapshot,
   RehearsalDiff,
   RunEvent,
@@ -51,6 +52,12 @@ interface BacktrackActions {
   rehearseUndo(planId: string): Promise<RehearsalDiff | null>;
   /** Streams undo.step events into the session; resolves when the stream ends. */
   executeUndo(planId: string): Promise<void>;
+  /**
+   * Reads for the graph view and explain drawer. They resolve or reject to the caller (no toast)
+   * and do not refresh the graph: browsing proposes a plan (Q1 + Q3) but changes nothing.
+   */
+  previewUndo(actionId: string, depth: number): Promise<UndoOutcome>;
+  explain(actionId: string): Promise<Explain>;
 }
 
 interface BacktrackMeta {
@@ -221,6 +228,14 @@ export function BacktrackProvider({
       },
       executeUndo(planId) {
         return consume((signal) => (client as ApiClient).executeUndo(planId, signal));
+      },
+      previewUndo(actionId, depth) {
+        if (!client) return Promise.reject(new Error('Not connected yet.'));
+        return client.undo({ actionId, depth });
+      },
+      explain(actionId) {
+        if (!client) return Promise.reject(new Error('Not connected yet.'));
+        return client.explain(actionId);
       },
     }),
     [client, consume, refresh],
