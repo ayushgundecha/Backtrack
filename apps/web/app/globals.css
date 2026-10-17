@@ -178,6 +178,37 @@
   }
 }
 
+/*
+ * World panel flashes (BT-045): one background fade per change. Accent = changed by an agent,
+ * green = put back by an undo step. The element is re-mounted per change, so each plays once.
+ */
+@layer utilities {
+  .flash-changed {
+    animation: flash-changed 600ms var(--ease-out-soft);
+  }
+  .flash-restored {
+    animation: flash-restored 600ms var(--ease-out-soft);
+  }
+}
+
+@keyframes flash-changed {
+  from {
+    background-color: color-mix(in oklab, var(--accent) 38%, transparent);
+  }
+  to {
+    background-color: transparent;
+  }
+}
+
+@keyframes flash-restored {
+  from {
+    background-color: color-mix(in oklab, var(--green) 38%, transparent);
+  }
+  to {
+    background-color: transparent;
+  }
+}
+
 @keyframes pending-pulse {
   0%,
   100% {
@@ -200,5 +231,21 @@
     animation-iteration-count: 1;
     transition-duration: 0.01ms;
     scroll-behavior: auto;
+  }
+}
+
+/*
+ * Reduced motion keeps the meaning of a flash without the fade: a still tint for as long as the
+ * flash lasts (the panel removes the class on time). Unlayered and more specific than the rule
+ * above, so it wins over the global animation reset.
+ */
+@media (prefers-reduced-motion: reduce) {
+  .flash-changed {
+    animation: none;
+    background-color: color-mix(in oklab, var(--accent) 22%, transparent);
+  }
+  .flash-restored {
+    animation: none;
+    background-color: color-mix(in oklab, var(--green) 22%, transparent);
   }
 }
