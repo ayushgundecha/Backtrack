@@ -648,16 +648,35 @@ To try it without a client: `npx @modelcontextprotocol/inspector node packages/m
 Requirements: Node 22+, pnpm 12, Docker.
 
 ```
+git clone https://github.com/ayushgundecha/Backtrack.git && cd Backtrack
+cp .env.example .env  # local defaults work as is; RESET_TOKEN is change-me
 pnpm install
 pnpm db:up            # FalkorDB on :6379, FalkorDB Browser on http://localhost:3000
 pnpm spike            # proves the FalkorDB behaviours the product relies on (docs/spike-results.md)
-pnpm demo:replay      # records the golden ops run into bt:demo
-pnpm demo:undo <id>   # plans and executes an undo from the terminal
-pnpm dev              # web panel
-pnpm typecheck && pnpm lint && pnpm test
+pnpm dev              # web panel on http://localhost:3100 (PORT=… to change)
+```
+
+Open http://localhost:3100 and follow the walkthrough above: Run ops agent, Approve at the gate, Run billing agent, type "undo the address change", slide the depth to 3, Rehearse, Confirm undo, then Never again. Reset world asks once for `RESET_TOKEN`.
+
+The same scene from a terminal, without the panel:
+
+```
+pnpm demo:replay --approve --billing     # reset bt:demo, run ops (gate approved) then billing
+pnpm demo:undo "undo the address change" --depth 3 --rehearse
+```
+
+Plain `pnpm demo:replay` stops at the gate and waits for an Approve from the panel (or pass `--approve` / `--deny`); `--fast` drops the 400 ms pacing, `--tenant acme` uses another graph.
+
+Other commands:
+
+```
+pnpm typecheck && pnpm lint && pnpm test   # needs FalkorDB running; tests use their own bt:test* graphs
+pnpm --filter @backtrack/web build         # production build of the panel
 pnpm gen:queries      # regenerates graph/queries.cypher from queries.ts
 pnpm db:down          # stops FalkorDB
 ```
+
+All of the CLIs and the panel read the one `.env` at the repository root.
 
 Environment (copy `.env.example` to `.env`):
 

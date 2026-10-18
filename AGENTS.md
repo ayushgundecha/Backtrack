@@ -6,9 +6,9 @@ Conventions for anyone (and any coding assistant) contributing to Backtrack. The
 ```
 pnpm db:up            # FalkorDB + Browser (http://localhost:3000) via docker compose
 pnpm spike            # prove FalkorDB behaviours against the local instance
-pnpm demo:replay      # record the golden ops run into bt:demo
+pnpm demo:replay --approve --billing   # record both golden runs into bt:demo
 pnpm demo:undo <id>   # plan and execute an undo from the terminal
-pnpm dev              # web panel
+pnpm dev              # web panel on http://localhost:3100
 pnpm typecheck && pnpm lint && pnpm test
 ```
 

@@ -1,4 +1,11 @@
+import { existsSync } from 'node:fs';
+import { resolve } from 'node:path';
 import type { NextConfig } from 'next';
+
+// One .env at the repository root serves the CLIs and the panel alike (Next only reads its own
+// directory). Variables already set, such as Vercel's, win; on Vercel the file does not exist.
+const rootEnv = resolve(import.meta.dirname, '../../.env');
+if (existsSync(rootEnv)) process.loadEnvFile(rootEnv);
 
 const nextConfig: NextConfig = {
   agentRules: false, // keep the hand-written root AGENTS.md; do not generate apps/web/AGENTS.md

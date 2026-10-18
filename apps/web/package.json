@@ -5,9 +5,9 @@
   "type": "module",
   "description": "Backtrack web panel: graph, run stream, undo console and world, over the core contracts.",
   "scripts": {
-    "dev": "next dev --webpack",
+    "dev": "next dev --webpack --port ${PORT:-3100}",
     "build": "next build --webpack",
-    "start": "next start",
+    "start": "next start --port ${PORT:-3100}",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },
