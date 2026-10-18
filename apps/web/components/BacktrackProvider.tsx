@@ -46,8 +46,11 @@ interface BacktrackActions {
   /** Resolves true once the run accepted the answer; false (with a toast) otherwise. */
   answerApproval(runId: string, actionId: string, approved: boolean): Promise<boolean>;
   resetWorld(): void;
-  /** Plain words, or an exact action (⌘Z prefill, a candidate) with an optional depth. */
-  requestUndo(request: string | UndoRequest): Promise<void>;
+  /**
+   * Plain words, or an exact action (⌘Z prefill, a candidate) with an optional depth. Resolves
+   * with the outcome now shown in the console, or null after a toasted error.
+   */
+  requestUndo(request: string | UndoRequest): Promise<UndoOutcome | null>;
   /** Runs the plan on a GRAPH.COPY fork and returns the diff; null after a toasted error. */
   rehearseUndo(planId: string): Promise<RehearsalDiff | null>;
   /** Streams undo.step events into the session; resolves when the stream ends. */
@@ -118,6 +121,12 @@ export function BacktrackProvider({
   const [streaming, setStreaming] = useState(false);
   const [undoOutcome, setUndoOutcome] = useState<UndoOutcome | null>(null);
   const stream = useRef<AbortController | null>(null);
+  // Undo answers by `actionId:depth`, shared by the graph preview and the console, so the two
+  // views of one depth cost one request. The engine itself answers an identical proposal with
+  // the same plan; this only saves the round trip. Cleared whenever the answer can change: an
+  // action is added or changes status, a plan is rehearsed or executed, the world is reset.
+  const answers = useRef(new Map<string, Promise<UndoOutcome>>());
+  const actionSignature = useRef('');
   // Responses can arrive out of order while events stream; only the newest read is applied.
   const readGeneration = useRef(0);
 
@@ -126,6 +135,14 @@ export function BacktrackProvider({
     try {
       const [nextGraph, nextWorld] = await Promise.all([from.graph(), from.world()]);
       if (generation !== readGeneration.current) return;
+      const signature = nextGraph.nodes
+        .filter((n) => n.label === 'Action')
+        .map((n) => `${n.id}:${n.status}`)
+        .join(',');
+      if (signature !== actionSignature.current) {
+        actionSignature.current = signature;
+        answers.current.clear();
+      }
       setGraph(nextGraph);
       setWorld(nextWorld);
       setConnection('ok');
@@ -159,7 +176,12 @@ export function BacktrackProvider({
       try {
         for await (const event of open(controller.signal)) {
           dispatch(event);
-          if (event.type === 'error') toast.error(event.message);
+          // A failure names its run; an error without one is the server explaining a fallback
+          // (live mode showing the replay). Both are also kept inline in the run stream.
+          if (event.type === 'error') {
+            if (event.runId) toast.error(event.message);
+            else toast.warning(event.message);
+          }
           if (CHANGES_GRAPH.has(event.type)) void refresh(client);
         }
       } catch (error) {
@@ -170,6 +192,23 @@ export function BacktrackProvider({
       }
     },
     [client, refresh],
+  );
+
+  /** One undo answer per action and depth while the graph stays the same (see `answers`). */
+  const askUndo = useCallback(
+    (from: ApiClient, actionId: string, depth: number): Promise<UndoOutcome> => {
+      const key = `${actionId}:${depth}`;
+      const cached = answers.current.get(key);
+      if (cached) return cached;
+      const asked = from.undo({ actionId, depth });
+      answers.current.set(key, asked);
+      // A failed ask (a 429, say) is not an answer: the next ask goes to the server again.
+      asked.catch(() => {
+        if (answers.current.get(key) === asked) answers.current.delete(key);
+      });
+      return asked;
+    },
+    [],
   );
 
   const actions = useMemo<BacktrackActions>(
@@ -199,26 +238,40 @@ export function BacktrackProvider({
           .then(() => {
             dispatch({ type: 'session.reset' });
             setUndoOutcome(null);
+            answers.current.clear();
             toast.success('World reset to the seed.');
             return refresh(client);
           })
           .catch((error: unknown) => toast.error(messageOf(error)));
       },
       async requestUndo(request) {
-        if (!client) return;
+        if (!client) return null;
         try {
-          setUndoOutcome(
-            await client.undo(typeof request === 'string' ? { text: request } : request),
-          );
+          let outcome: UndoOutcome;
+          if (typeof request !== 'string' && request.actionId && request.depth !== undefined) {
+            outcome = await askUndo(client, request.actionId, request.depth);
+          } else {
+            outcome = await client.undo(typeof request === 'string' ? { text: request } : request);
+            // Words resolved to a plan: the graph preview of the same root and depth reuses it.
+            if (outcome.kind === 'plan') {
+              const { rootActionId, depth } = outcome.plan;
+              answers.current.set(`${rootActionId}:${depth}`, Promise.resolve(outcome));
+            }
+          }
+          setUndoOutcome(outcome);
           void refresh(client);
+          return outcome;
         } catch (error) {
           toast.error(messageOf(error));
+          return null;
         }
       },
       async rehearseUndo(planId) {
         if (!client) return null;
         try {
           const diff = await client.rehearse(planId);
+          // The plan is now 'rehearsed' in the graph; a new ask must not be answered with it.
+          answers.current.clear();
           void refresh(client);
           return diff;
         } catch (error) {
@@ -227,18 +280,19 @@ export function BacktrackProvider({
         }
       },
       executeUndo(planId) {
+        answers.current.clear();
         return consume((signal) => (client as ApiClient).executeUndo(planId, signal));
       },
       previewUndo(actionId, depth) {
         if (!client) return Promise.reject(new Error('Not connected yet.'));
-        return client.undo({ actionId, depth });
+        return askUndo(client, actionId, depth);
       },
       explain(actionId) {
         if (!client) return Promise.reject(new Error('Not connected yet.'));
         return client.explain(actionId);
       },
     }),
-    [client, consume, refresh],
+    [client, consume, refresh, askUndo],
   );
 
   const value = useMemo<BacktrackContextValue>(

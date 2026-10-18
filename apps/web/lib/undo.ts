@@ -3,7 +3,7 @@
  * to a text field, and how undo.step events map onto the plan's checklist. Framework-free so it is
  * unit-tested; the components only render what these return.
  */
-import type { GraphSnapshot, UndoPlan } from '@backtrack/core/contracts';
+import type { GraphSnapshot, UndoOutcome, UndoPlan } from '@backtrack/core/contracts';
 import type { UndoExecutionView } from './session';
 
 export interface UndoTarget {
@@ -136,4 +136,21 @@ export function executionCounts(states: Map<number, StepState>) {
     counts.finished += 1;
   }
   return counts;
+}
+
+/**
+ * The root to re-plan when the shared depth moves, or null. Only a plan that is still a proposal
+ * follows the slider: once it is executing or done, the card is a record of what ran at its own
+ * depth and must not be swapped for a different plan.
+ */
+export function planFollowsDepth(
+  outcome: UndoOutcome | null,
+  depth: number,
+  execution: UndoExecutionView | null,
+): string | null {
+  if (outcome?.kind !== 'plan') return null;
+  const { plan } = outcome;
+  if (plan.depth === depth || plan.status !== 'proposed') return null;
+  if (execution?.planId === plan.id) return null;
+  return plan.rootActionId;
 }

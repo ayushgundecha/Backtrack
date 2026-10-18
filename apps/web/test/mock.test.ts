@@ -130,14 +130,19 @@ describe('mock client: golden ops and billing runs', () => {
 
   it('answers unknown, none and memory honestly', async () => {
     const { client, idOf } = await goldenWorld();
-    const unknown = await client.undo({ text: 'undo the thing from yesterday' });
+    const unknown = await client.undo({ text: 'undo the weather' });
     expect(unknown.kind === 'unknown' && unknown.candidates.map((c) => c.tool)).toEqual([
       'apply_credit',
-      'schedule_followup',
-      'send_email',
+      'lookup_ticket',
+      'list_open_tickets',
     ]);
-    const none = await client.undo({ actionId: idOf('schedule_followup') });
-    expect(none.kind).toBe('none');
+    // A lookup changed nothing; a leaf change is still a (one-step) plan, as in the engine.
+    const none = await client.undo({ actionId: idOf('lookup_order') });
+    expect(none.kind === 'none' && none.reason).toBe(
+      'lookup_order (seq 1) only read; it changed nothing, so there is nothing to undo',
+    );
+    const leaf = await client.undo({ actionId: idOf('schedule_followup') });
+    expect(planTools(leaf)).toEqual(['schedule_followup']);
 
     const outcome = await client.undo({ actionId: idOf('update_address'), depth: 3 });
     if (outcome.kind !== 'plan') throw new Error('expected a plan');

@@ -19,8 +19,6 @@ import { executionCounts, planPhase, planStepStates, type StepState } from '@/li
 import { useBacktrack } from './BacktrackProvider';
 import { StatusBadge } from './StatusBadge';
 
-const DEPTHS = [1, 2, 3, 4, 5] as const;
-
 /** Icon for a step before it runs: ↩ revert, ⚠ irreversible (gets a mitigation), else neutral. */
 function ModeIcon({ mode }: { mode: UndoStep['mode'] }) {
   if (mode === 'mitigation')
@@ -142,14 +140,7 @@ function reveal(root: HTMLElement | null, selector: string) {
  * Execution ticks come from undo.step events in the session, so the list moves exactly when the
  * graph and world do.
  */
-export function PlanCard({
-  plan,
-  onDepth,
-}: {
-  plan: UndoPlan;
-  /** Re-plans the same root at another depth (Q1 closure 1..5). */
-  onDepth: (depth: number) => void;
-}) {
+export function PlanCard({ plan }: { plan: UndoPlan }) {
   const { state, actions } = useBacktrack();
   const [diff, setDiff] = useState<RehearsalDiff | null>(null);
   const [rehearsing, setRehearsing] = useState(false);
@@ -192,35 +183,18 @@ export function PlanCard({
         <p className="text-fg-muted text-sm">{plan.summary}</p>
       </header>
 
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-fg-muted text-xs">
-          <span className="font-mono">
-            {blast.actions} actions · {blast.irreversible} irreversible · {blast.entities.length}{' '}
-            entities
-          </span>{' '}
-          (Q3 blast radius)
-        </p>
-        {/* Depth is the Q1 closure bound; changing it asks the engine for a new plan. */}
-        <fieldset className="flex items-center gap-1" disabled={busy || started}>
-          <legend className="sr-only">Plan depth</legend>
-          <span aria-hidden className="mr-1 text-fg-muted text-xs">
-            Depth
-          </span>
-          {DEPTHS.map((d) => (
-            <Button
-              key={d}
-              type="button"
-              size="icon-xs"
-              variant={d === plan.depth ? 'default' : 'outline'}
-              aria-pressed={d === plan.depth}
-              aria-label={`Depth ${d}`}
-              onClick={() => d !== plan.depth && onDepth(d)}
-            >
-              {d}
-            </Button>
-          ))}
-        </fieldset>
-      </div>
+      {/*
+        Depth has one control, the blast chip's slider in the graph (PLAN §7.3); a proposed plan
+        is re-asked at the slider's depth, so this line only reports the depth it was planned at.
+      */}
+      <p className="text-fg-muted text-xs">
+        <span className="font-mono">
+          {blast.actions} actions · {blast.irreversible} irreversible · {blast.entities.length}{' '}
+          entities · depth {plan.depth}
+        </span>{' '}
+        (Q3 blast radius
+        {started ? ')' : '; the depth slider in the graph changes it)'}
+      </p>
 
       {/* Cross-agent reach first: it is the line a reviewer most needs before confirming. */}
       {plan.crossAgent.map((c) => (

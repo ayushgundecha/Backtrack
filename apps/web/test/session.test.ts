@@ -49,6 +49,42 @@ describe('sessionReducer', () => {
     ]);
   });
 
+  it('keeps the live-mode fallback notice above the replay it introduces', async () => {
+    // The mock answers like a server without an OpenRouter key: a notice, then the replay.
+    const client = new MockApiClient({ stepDelayMs: 0 });
+    const stream = client.runAgent({ agent: 'ops-agent', mode: 'llm' })[Symbol.asyncIterator]();
+    const state = fold(await untilApproval(stream));
+    expect(state.errors).toEqual([
+      {
+        message: 'Live mode is not configured (no OpenRouter key); showing the replay instead',
+        runId: null,
+        beforeRun: 0,
+      },
+    ]);
+    // A notice without a run does not fail anything: the replay is running, paused at the gate.
+    expect(state.runs).toMatchObject([{ mode: 'replay', status: 'paused' }]);
+    await stream.return?.(undefined);
+  });
+
+  it('marks the run failed when an error names it', () => {
+    const state = fold([
+      {
+        type: 'run.started',
+        runId: 'run_1',
+        agentId: 'ops-agent',
+        mode: 'replay',
+        goal: 'g',
+        model: null,
+        ts: 0,
+      },
+      { type: 'error', runId: 'run_1', message: 'No order with id ord_9' },
+    ]);
+    expect(state.runs[0]?.status).toBe('failed');
+    expect(state.errors).toEqual([
+      { message: 'No order with id ord_9', runId: 'run_1', beforeRun: 1 },
+    ]);
+  });
+
   it('tracks undo execution per step and its final status', () => {
     const step = (order: number, status: 'started' | 'done'): RunEvent => ({
       type: 'undo.step',

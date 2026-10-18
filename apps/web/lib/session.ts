@@ -51,11 +51,23 @@ export interface UndoExecutionView {
   status: 'running' | EventOf<'undo.finished'>['status'];
 }
 
+/**
+ * An `error` event, kept where it happened in the stream so the run stream can show it inline
+ * (a toast alone disappears). `beforeRun` is how many runs had started when it arrived, so a
+ * notice such as "Live mode is not configured; showing the replay instead" sits above the
+ * replay it introduces.
+ */
+export interface SessionNotice {
+  message: string;
+  runId: string | null;
+  beforeRun: number;
+}
+
 export interface SessionState {
   runs: RunView[];
   steps: StepView[];
   undo: UndoExecutionView | null;
-  errors: string[];
+  errors: SessionNotice[];
 }
 
 export const initialSession: SessionState = { runs: [], steps: [], undo: null, errors: [] };
@@ -206,7 +218,10 @@ export function sessionReducer(state: SessionState, action: SessionAction): Sess
     case 'error':
       return {
         ...state,
-        errors: [...state.errors, action.message],
+        errors: [
+          ...state.errors,
+          { message: action.message, runId: action.runId, beforeRun: state.runs.length },
+        ],
         runs: action.runId ? setRunStatus(state.runs, action.runId, 'failed') : state.runs,
       };
   }

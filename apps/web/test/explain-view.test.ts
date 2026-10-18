@@ -82,6 +82,41 @@ describe('pathView', () => {
       rootId: root,
     });
   });
+
+  it('neither shows nor denies a path when the selection has no plan', async () => {
+    // A read-only root never asks Q1, so "nothing depends on it" would be a claim without rows.
+    const lookup = idOf('lookup_order');
+    const closure = closureFromOutcome(
+      await client.undo({ actionId: lookup, depth: 3 }),
+      lookup,
+      3,
+      graph,
+    );
+    expect(pathView(lookup, closure)).toEqual({
+      kind: 'no-plan',
+      depth: 3,
+      note: 'lookup_order (seq 1) only read; it changed nothing, so there is nothing to undo',
+    });
+  });
+
+  it('names only the plans that ran when an action is already undone', () => {
+    const root = idOf('update_address');
+    const closure = closureFromOutcome(
+      {
+        kind: 'memory',
+        actionId: root,
+        priorPlans: [
+          { id: 'plan_ran', ts: 2, status: 'executed', summary: 's' },
+          { id: 'plan_preview', ts: 1, status: 'proposed', summary: 's' },
+        ],
+      },
+      root,
+      1,
+      graph,
+    );
+    expect(closure.note).toBe('Already undone by plan_ran (Q13); nothing left to plan.');
+    expect(pathView(idOf('create_ticket'), closure).kind).toBe('no-plan');
+  });
 });
 
 describe('brief', () => {

@@ -100,14 +100,14 @@ describe('closureFromOutcome', () => {
     ).toBe(true);
   });
 
-  it('lights only the root and carries the reason when nothing depends on it', async () => {
-    const root = idOf('apply_credit');
+  it('lights only the root and carries the reason when there is nothing to undo', async () => {
+    const root = idOf('lookup_order');
     const outcome = await client.undo({ actionId: root, depth: 2 });
     expect(outcome.kind).toBe('none');
     const closure = closureFromOutcome(outcome, root, 2, graph);
     expect([...closure.lit]).toEqual([root]);
     expect(closure.blast).toBeNull();
-    expect(closure.note).toMatch(/Nothing depends on apply_credit/);
+    expect(closure.note).toMatch(/lookup_order \(seq 1\) only read/);
   });
 });
 

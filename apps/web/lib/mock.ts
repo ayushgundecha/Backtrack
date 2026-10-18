@@ -8,6 +8,8 @@
  * Nothing here runs Cypher. Trace strings mirror the query catalogue (PLAN §5) so the UI has
  * realistic text to show, and the UI labels every screen fed by this client as mock data.
  * Everything is deterministic: ids are counters and timestamps come from a logical clock.
+ * test/parity.test.ts drives the golden demo through this client and through the real routes on
+ * FalkorDB and fails on any difference the panel could show, so the two cannot drift apart.
  */
 import {
   type ActionKind,
@@ -42,20 +44,28 @@ import {
 import { runFixtures, worldSeed } from './fixtures';
 import {
   correctionDraft,
-  displayOf,
   type EntityState,
   keyPrefix,
+  refDisplay,
   ToolError,
   type ToolOutput,
   tools,
   type WorldReader,
+  worldTitle,
 } from './mock-tools';
 
 /** 2026-10-17 09:30 IST. Mock timestamps are BASE_TS + n ticks so every run renders identically. */
 const BASE_TS = Date.UTC(2026, 9, 17, 4, 0, 0);
 const TICK_MS = 400;
 const HUMAN = 'ayush';
+const HUMAN_NAME = 'Ayush';
 const UNDO_AGENT = 'backtrack';
+/** The actors every tenant graph is seeded with, by id and name. */
+const ACTORS: Record<string, string> = {
+  'ops-agent': 'Ops agent',
+  'billing-agent': 'Billing agent',
+  [UNDO_AGENT]: 'Backtrack',
+};
 
 /** Query text shown in trace strips. Mirrors the real catalogue; the mock never executes it. */
 const CYPHER = {
@@ -144,6 +154,13 @@ interface MockState {
 const entityId = (type: string, key: string) => `${type}:${key}`;
 const refId = (ref: EntityRef) => entityId(ref.type, ref.key);
 
+/** Words that say "undo" rather than what to undo; core's resolver ignores the same ones. */
+const STOPWORDS = new Set(
+  'undo revert roll back rollback the a an that this my our please change changes changed action step last of to on for it what did was made'.split(
+    ' ',
+  ),
+);
+
 /** Canonical JSON (sorted keys), the same comparison the engine uses for `state == after`. */
 function canonical(value: unknown): string {
   return JSON.stringify(value, (_key, v: unknown) =>
@@ -159,7 +176,7 @@ function seedEntities(): Record<string, WorldEntity> {
     entities[entityId('customer', c.id)] = {
       type: 'customer',
       key: c.id,
-      display: c.name,
+      display: worldTitle('customer', c),
       state: { ...c },
     };
   }
@@ -167,7 +184,7 @@ function seedEntities(): Record<string, WorldEntity> {
     entities[entityId('order', o.id)] = {
       type: 'order',
       key: o.id,
-      display: o.id,
+      display: worldTitle('order', o),
       state: { ...o, items: [...o.items] },
     };
   }
@@ -181,14 +198,16 @@ function applyChange(entities: Record<string, WorldEntity>, change: EffectDraft)
   if (change.kind === 'update' && change.field) {
     if (!current?.state) throw new ToolError(`Cannot update ${id}: it does not exist`);
     current.state = { ...current.state, [change.field]: structuredClone(change.after) };
-    current.display = displayOf(current.type, current.state);
+    current.display = worldTitle(current.type, current.state);
     return;
   }
   const state = change.after === null ? null : (structuredClone(change.after) as EntityState);
   entities[id] = {
     type: change.entity.type,
     key: change.entity.key,
-    display: state ? displayOf(change.entity.type, state) : (current?.display ?? change.entity.key),
+    display: state
+      ? worldTitle(change.entity.type, state)
+      : (current?.display ?? change.entity.key),
     state,
   };
 }
@@ -303,8 +322,10 @@ class MockEngine {
     const reads = (input.output?.reads ?? []).map(refId);
     const writes = (input.output?.writes ?? []).map((w) => refId(w.entity));
     // One DEPENDS_ON per prior writer, via 'read' if this action read the entity, else 'write'.
+    // Only original actions get them, as in the engine's recorder: undo and mitigation actions
+    // are linked to their original by UNDOES, so a traversal never wanders into compensations.
     const dependsOn = new Map<string, 'read' | 'write'>();
-    for (const entity of [...reads, ...writes]) {
+    for (const entity of input.kind === 'do' ? [...reads, ...writes] : []) {
       const writer = this.latestWriter(entity);
       if (writer && !dependsOn.has(writer.record.id)) {
         dependsOn.set(writer.record.id, reads.includes(entity) ? 'read' : 'write');
@@ -370,12 +391,12 @@ class MockEngine {
     });
   }
 
-  /** Actions that depend directly on `id`, excluding undone ones and undo/mitigation actions. */
+  /** Live dependents of `id`: original (`do`) actions that are done, as Q1's path filter says. */
   private dependentsOf(id: string): ActionEntry[] {
     return this.state.actions.filter(
       (a) =>
         a.record.kind === 'do' &&
-        a.record.status !== 'undone' &&
+        a.record.status === 'done' &&
         a.dependsOn.some((d) => d.actionId === id),
     );
   }
@@ -432,43 +453,54 @@ class MockEngine {
     );
   }
 
-  /** The entity an undo step names: what the action created, else what it changed, else read. */
+  /** The entity an undo step names: what the action created or sent, else the first it changed. */
   primaryEntity(entry: ActionEntry): EntityRef | null {
     const effects = this.effectsOf(entry.record.id);
-    const effect = effects.find((e) => e.before === null) ?? effects[0];
-    if (effect) return effect.entity;
-    const read = entry.reads[0] ? this.state.entities[entry.reads[0]] : undefined;
-    return read ? { type: read.type, key: read.key, display: read.display } : null;
+    const effect = effects.find((e) => e.kind === 'create' || e.kind === 'external') ?? effects[0];
+    return effect
+      ? { type: effect.entity.type, key: effect.entity.key, display: effect.entity.display }
+      : null;
   }
 
+  /** `labelOf` in core's resolver: the tool and its first two argument values. */
   label(entry: ActionEntry): string {
-    const entity = this.primaryEntity(entry);
-    return entity ? `${entry.record.tool} ${entity.key}` : entry.record.tool;
+    const shown = Object.entries(entry.record.args)
+      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+      .map(([, v]) => v)
+      .filter((v) => typeof v === 'string' || typeof v === 'number')
+      .slice(0, 2)
+      .map((v) => {
+        const s = String(v);
+        return s.length > 40 ? `${s.slice(0, 39)}…` : s;
+      });
+    return shown.length ? `${entry.record.tool}(${shown.join(', ')})` : entry.record.tool;
   }
 
   /** Q2 + Q3 + Q7: the undo plan for a root at a depth, in reverse dependency order (seq DESC). */
   proposeUndo(root: ActionEntry, depth: number): UndoPlan {
     const closure = this.downstream(root.record.id, depth);
-    // Read-only dependents are leaves with nothing to undo, so the plan lists only changes.
+    // Q1 only returns dependents that changed something; read-only ones have nothing to undo.
     const members = [root, ...[...closure.keys()].map((id) => this.action(id) as ActionEntry)]
-      .filter(
-        (a) => a === root || (a.record.status === 'done' && this.effectsOf(a.record.id).length > 0),
-      )
+      .filter((a) => a === root || this.effectsOf(a.record.id).length > 0)
       .sort((a, b) => b.record.seq - a.record.seq);
 
     const steps: UndoStep[] = members.map((a, i) => {
       const spec = tools[a.record.tool];
       const entity = this.primaryEntity(a);
       const reach = closure.get(a.record.id);
-      const undoTool = a.record.reversible ? a.record.inverseTool : a.record.mitigationTool;
+      const mode = a.record.reversible ? (spec?.undoMode ?? 'inverse') : 'mitigation';
+      const verb =
+        mode === 'mitigation'
+          ? a.record.mitigationTool
+          : (a.record.inverseTool ?? `revert_${a.record.tool}`);
       return {
         order: i + 1,
         actionId: a.record.id,
         tool: a.record.tool,
         seq: a.record.seq,
         agentId: a.record.agentId,
-        mode: spec?.undoMode ?? 'skip',
-        label: `${undoTool ?? 'skip'}${entity ? ` ${entity.key}` : ''} (${a.record.tool})`,
+        mode,
+        label: `${verb}${entity ? ` ${entity.key}` : ''} (${a.record.tool})`,
         entity,
         hops: reach?.hops ?? 0,
         // Same shape as the engine's Q1 row: tool names from the root to this dependent, both
@@ -480,22 +512,43 @@ class MockEngine {
     });
 
     const irreversible = steps.filter((s) => s.mode === 'mitigation');
+    // Q7 orders other agents' dependents by distance.
     const crossAgent = steps
       .filter((s) => s.agentId !== root.record.agentId)
+      .sort((a, b) => a.hops - b.hops || a.seq - b.seq)
       .map(({ agentId, actionId, tool, hops }) => ({ agentId, actionId, tool, hops }));
     const entities = [
       ...new Set(members.flatMap((a) => this.effectsOf(a.record.id).map((e) => refId(e.entity)))),
     ];
 
-    const parts = [`${steps.length} steps in reverse dependency order`];
+    // The engine's summarise(), word for word.
+    const parts = [
+      `Undo ${root.record.tool} (seq ${root.record.seq}) at depth ${depth}: ${steps.length} step${steps.length === 1 ? '' : 's'} in reverse dependency order`,
+    ];
     if (irreversible.length > 0) {
       parts.push(
-        `${irreversible.length} irreversible (${irreversible.map((s) => s.tool).join(', ')}) gets a mitigation`,
+        `${irreversible.length} irreversible (${irreversible.map((s) => s.tool).join(', ')}) gets a mitigation instead`,
       );
     }
     if (crossAgent.length > 0) {
-      parts.push(`reaches ${[...new Set(crossAgent.map((c) => c.agentId))].join(', ')}`);
+      parts.push(
+        `affects ${crossAgent.map((c) => `${c.agentId} ${c.tool} (${c.hops} hops)`).join(', ')}`,
+      );
     }
+    const summary = `${parts.join('; ')}.`;
+
+    // Asking again must not pile up copies (P8 in the engine): an identical plan that is still
+    // proposed keeps its id.
+    const same = this.state.plans.findLast(
+      (p) =>
+        p.status === 'proposed' &&
+        p.rootActionId === root.record.id &&
+        p.depth === depth &&
+        p.summary === summary &&
+        p.steps.map((s) => s.actionId).join() === steps.map((s) => s.actionId).join(),
+    );
+    if (same) return structuredClone(same);
+
     const plan: UndoPlan = {
       id: this.id('plan'),
       rootActionId: root.record.id,
@@ -504,11 +557,21 @@ class MockEngine {
       steps,
       blast: { actions: steps.length, irreversible: irreversible.length, entities, depth },
       crossAgent,
-      summary: `Undo ${root.record.tool} (seq ${root.record.seq}) at depth ${depth}: ${parts.join('; ')}.`,
+      summary,
       ts: this.now(),
     };
     this.state.plans.push(plan);
-    return plan;
+    // The plan records its steps when it is proposed (P1): REVERTS, or COULD_NOT_REVERT for an
+    // irreversible step that gets a mitigation.
+    for (const s of steps) {
+      this.state.planLinks.push({
+        planId: plan.id,
+        actionId: s.actionId,
+        type: s.mode === 'mitigation' ? 'COULD_NOT_REVERT' : 'REVERTS',
+        order: s.order,
+      });
+    }
+    return structuredClone(plan);
   }
 
   plan(planId: string): UndoPlan | undefined {
@@ -538,7 +601,7 @@ class MockEngine {
       };
     }
     return {
-      kind: effect.before === null ? 'delete' : 'create',
+      kind: effect.before === null ? 'delete' : 'update',
       entity: effect.entity,
       field: null,
       before: current,
@@ -549,59 +612,65 @@ class MockEngine {
   /** Executes one plan step and records it as an undo (or mitigation) action in an undo run. */
   revert(plan: UndoPlan, step: UndoStep, runId: string): 'done' | 'conflict' | 'skipped' {
     const original = this.action(step.actionId);
-    if (!original || original.record.status === 'undone') return 'skipped';
-    const link = (type: PlanLinkType) =>
-      this.state.planLinks.push({
-        planId: plan.id,
-        actionId: step.actionId,
-        type,
-        order: step.order,
-      });
+    // Already undone, or already compensated (an UNDOES edge points at it): nothing to do again.
+    const compensated = this.state.undoes.some((u) => u.originalId === step.actionId);
+    if (!original || original.record.status === 'undone' || compensated) return 'skipped';
+    // Compensations are recorded like the engine's: reversible, no inverse of their own, linked
+    // to the original by UNDOES (and never by DEPENDS_ON, see record()).
     const base = {
       runId,
       agentId: UNDO_AGENT,
-      thought: `Step ${step.order} of ${plan.id}: ${step.label}`,
+      thought: step.label,
       status: 'done' as const,
-      reversible: false,
+      reversible: true,
       inverseTool: null,
       mitigationTool: null,
     };
+    const undoes = (entry: ActionEntry) =>
+      this.state.undoes.push({ undoId: entry.record.id, originalId: original.record.id });
 
     if (step.mode === 'mitigation') {
       // An email cannot be unsent: record a correction draft and leave the original as done.
       const sent = this.effectsOf(original.record.id)[0]?.after as EntityState | undefined;
       if (!sent) return 'skipped';
-      const draft = correctionDraft(this.reader(), sent);
-      this.record({
+      const { entry } = this.record({
         ...base,
         tool: original.record.mitigationTool ?? 'mitigation',
         args: { actionId: original.record.id },
         kind: 'mitigation',
-        output: { result: { draft: draft.entity.key }, reads: [], writes: [draft] },
+        output: correctionDraft(this.reader(), sent),
       });
-      link('COULD_NOT_REVERT');
+      undoes(entry);
       return 'done';
     }
 
     const effects = this.effectsOf(original.record.id);
     if (!effects.every((e) => this.stillAsWritten(e))) {
-      link('CONFLICT');
+      this.state.planLinks.push({
+        planId: plan.id,
+        actionId: step.actionId,
+        type: 'CONFLICT',
+        order: step.order,
+      });
       return 'conflict';
     }
+    const restores = [...effects].reverse().map((e) => this.restoreOf(e));
     const { entry } = this.record({
       ...base,
-      tool: original.record.inverseTool ?? 'restore',
+      tool: original.record.inverseTool ?? `revert_${original.record.tool}`,
       args: { actionId: original.record.id },
       kind: 'undo',
       output: {
-        result: { undoes: original.record.id },
-        reads: [],
-        writes: [...effects].reverse().map((e) => this.restoreOf(e)),
+        result: {
+          actionId: original.record.id,
+          restored: restores.map((w) => refId(w.entity)),
+        },
+        reads: restores.map((w) => w.entity),
+        writes: restores,
       },
     });
-    this.state.undoes.push({ undoId: entry.record.id, originalId: original.record.id });
+    undoes(entry);
     original.record.status = 'undone';
-    link('REVERTS');
     return 'done';
   }
 
@@ -622,17 +691,16 @@ class MockEngine {
     const { state } = this;
     const nodes: GraphSnapshot['nodes'] = [];
     const links: GraphSnapshot['links'] = [];
-    const agents = [...new Set(state.runs.map((r) => r.agentId))];
-    const usesHuman =
-      state.approvals.length > 0 || state.plans.length > 0 || state.policies.length > 0;
-    if (usesHuman) nodes.push({ id: HUMAN, label: 'User', title: HUMAN });
-    for (const agent of agents) nodes.push({ id: agent, label: 'Agent', title: agent });
+    // The tenant is seeded with its actors (ensureTenant), so they exist before any run.
+    for (const [id, title] of Object.entries(ACTORS)) nodes.push({ id, label: 'Agent', title });
+    nodes.push({ id: HUMAN, label: 'User', title: HUMAN_NAME });
     for (const run of state.runs) {
       nodes.push({
         id: run.id,
         label: 'Run',
         title: run.goal,
         status: run.status,
+        kind: run.agentId === UNDO_AGENT ? 'undo' : 'agent',
         agentId: run.agentId,
       });
       links.push({ source: run.agentId, target: run.id, type: 'RAN' });
@@ -667,15 +735,10 @@ class MockEngine {
       for (const dep of a.dependsOn)
         links.push({ source: record.id, target: dep.actionId, type: 'DEPENDS_ON' });
     }
+    // Entity nodes carry the recorder's display ("order ord_1001"), not the world panel's title.
     for (const id of touched) {
       const entity = state.entities[id];
-      if (entity)
-        nodes.push({
-          id,
-          label: 'Entity',
-          title: entity.display,
-          status: entity.state ? 'present' : 'deleted',
-        });
+      if (entity) nodes.push({ id, label: 'Entity', title: refDisplay(entity.type, entity.key) });
     }
     for (const { undoId, originalId } of state.undoes)
       links.push({ source: undoId, target: originalId, type: 'UNDOES' });
@@ -726,38 +789,54 @@ class MockEngine {
     };
   }
 
-  /** Text → action, the way resolve_action does it: keyword hits, ties go to the latest action. */
-  resolveText(text: string): ActionEntry | undefined {
-    const words: string[] = text.toLowerCase().match(/[a-z0-9_]+/g) ?? [];
-    const direct = this.state.actions.find((a) => words.includes(a.record.id));
-    if (direct) return direct;
-    let best: { entry: ActionEntry; score: number } | undefined;
-    for (const entry of this.state.actions) {
-      if (entry.record.kind !== 'do') continue;
-      const keywords = tools[entry.record.tool]?.keywords ?? [];
-      const score = words.filter((w) => keywords.includes(w)).length;
-      if (score > 0 && (!best || score >= best.score)) best = { entry, score };
+  /**
+   * resolve_action, ported from packages/core/src/sdk/resolve.ts: an id resolves directly; words
+   * are scored against each original action's tool name and arguments; a tie between different
+   * tools is ambiguous and answers up to three candidates instead of a guess.
+   */
+  resolve(input: { actionId?: string | null; text?: string | null }): {
+    action: ActionEntry | null;
+    candidates: { id: string; tool: string; seq: number; label: string }[];
+  } {
+    const originals = this.state.actions.filter((a) => a.record.kind === 'do');
+    const latestFirst = [...originals].sort((a, b) => b.record.seq - a.record.seq);
+    const candidate = (a: ActionEntry) => ({
+      id: a.record.id,
+      tool: a.record.tool,
+      seq: a.record.seq,
+      label: this.label(a),
+    });
+    const byId = input.actionId ?? (input.text?.match(/\bact_[a-z0-9]+\b/)?.[0] || null);
+    if (byId) {
+      const hit = this.action(byId) ?? null;
+      return { action: hit, candidates: hit ? [] : latestFirst.slice(0, 3).map(candidate) };
     }
-    return best?.entry;
-  }
-
-  /** The three most recent changes an undo request could have meant. */
-  candidates(): { id: string; tool: string; seq: number; label: string }[] {
-    return this.state.actions
-      .filter(
-        (a) =>
-          a.record.kind === 'do' &&
-          a.record.status === 'done' &&
-          this.effectsOf(a.record.id).length > 0,
-      )
-      .sort((a, b) => b.record.seq - a.record.seq)
-      .slice(0, 3)
-      .map((a) => ({
-        id: a.record.id,
-        tool: a.record.tool,
-        seq: a.record.seq,
-        label: this.label(a),
-      }));
+    const tokens = (input.text ?? '')
+      .toLowerCase()
+      .replace(/follow-up/g, 'followup')
+      .split(/[^a-z0-9_]+/)
+      .filter((t) => t && !STOPWORDS.has(t));
+    const score = (a: ActionEntry) => {
+      const toolWords = new Set(a.record.tool.split('_'));
+      const argText = canonical(a.record.args).toLowerCase();
+      let s = 0;
+      for (const t of tokens) {
+        if (t === a.record.tool) s += 3;
+        else if (toolWords.has(t) || toolWords.has(t.replace(/s$/, ''))) s += 2;
+        else if (t.length > 2 && argText.includes(t)) s += 1;
+      }
+      return s;
+    };
+    const ranked = latestFirst
+      .map((a) => ({ a, s: score(a) }))
+      .filter((x) => x.s > 0)
+      .sort((x, y) => y.s - x.s || y.a.record.seq - x.a.record.seq);
+    const [best, second] = ranked;
+    const unique =
+      best && (!second || second.s < best.s || second.a.record.tool === best.a.record.tool);
+    if (best && unique) return { action: best.a, candidates: [] };
+    const pool = ranked.length ? ranked.map((x) => x.a) : latestFirst;
+    return { action: null, candidates: pool.slice(0, 3).map(candidate) };
   }
 
   /** Live, done `do` actions and their DEPENDS_ON edges: the subgraph the algorithms run on. */
@@ -1030,35 +1109,29 @@ export class MockApiClient implements ApiClient {
   }
 
   async *runAgent(request: AgentRequest, signal?: AbortSignal): AsyncGenerator<RunEvent> {
-    const { agent, mode, goal } = api.agent.body.parse({ ...request, tenant: this.tenant });
-    if (mode === 'llm') {
-      yield event({
-        type: 'error',
-        runId: null,
-        message:
-          'Live LLM runs need the real API. The mock client only replays fixtures (NEXT_PUBLIC_MOCK=1).',
-      });
-      return;
-    }
-    if (this.activeRunId) {
-      yield event({
-        type: 'error',
-        runId: null,
-        message: `Run ${this.activeRunId} is still in progress.`,
-      });
-      return;
-    }
+    const { agent, mode } = api.agent.body.parse({ ...request, tenant: this.tenant });
+    // Like the route: one run at a time per tenant, refused with a 409 before anything streams.
+    this.assertIdle('/api/agent');
     // Hold on to this engine: if the world is reset mid-run, the stale run simply stops.
     const engine = this.engine;
     const fixture = runFixtures[agent];
-    const run = engine.startRun(agent, goal ?? fixture.goal);
+    const run = engine.startRun(agent, fixture.goal);
     this.activeRunId = run.id;
     try {
+      if (mode === 'llm') {
+        // The mock has no model, exactly like a server without an OpenRouter key: the route
+        // says so and streams the replay instead.
+        yield event({
+          type: 'error',
+          runId: null,
+          message: 'Live mode is not configured (no OpenRouter key); showing the replay instead',
+        });
+      }
       yield event({
         type: 'run.started',
         runId: run.id,
         agentId: agent,
-        mode,
+        mode: 'replay',
         goal: run.goal,
         model: null,
         ts: engine.now(),
@@ -1221,68 +1294,106 @@ export class MockApiClient implements ApiClient {
     return { ok: true };
   }
 
+  /** The engine's planUndo outcomes, in the same order of checks and with the same reasons. */
   async undo(request: UndoRequest): Promise<UndoOutcome> {
     const { text, actionId, depth } = api.undo.body.parse({ ...request, tenant: this.tenant });
     const { engine } = this;
-    const query = text ?? actionId ?? '';
-    const target = actionId ? engine.action(actionId) : engine.resolveText(query);
-    if (!target)
-      return api.undo.response.parse({ kind: 'unknown', query, candidates: engine.candidates() });
+    const { action: target, candidates } = engine.resolve({ actionId, text });
+    if (!target) {
+      const query = text ?? actionId ?? '';
+      return api.undo.response.parse({ kind: 'unknown', query, candidates });
+    }
 
     const { record } = target;
+    const none = (reason: string) =>
+      api.undo.response.parse({ kind: 'none', actionId: record.id, reason });
+    if (record.kind !== 'do') {
+      return none(
+        `${record.tool} (seq ${record.seq}) is itself a ${record.kind} action; undoing an undo is refused (traversals only follow original actions)`,
+      );
+    }
     if (record.status === 'undone') {
-      // Q13 recall: say when it was undone before instead of planning again.
+      // Q13 recall: every plan rooted at or reverting this action, newest first.
       const priorPlans = engine.state.plans
-        .filter((p) => p.steps.some((s) => s.actionId === record.id) && p.status !== 'proposed')
+        .filter(
+          (p) => p.rootActionId === record.id || p.steps.some((s) => s.actionId === record.id),
+        )
+        .sort((a, b) => b.ts - a.ts)
         .map(({ id, ts, status, summary }) => ({ id, ts, status, summary }));
       return api.undo.response.parse({ kind: 'memory', actionId: record.id, priorPlans });
     }
-    if (engine.downstream(record.id, 10).size === 0) {
-      const reason =
-        engine.effectsOf(record.id).length === 0
-          ? `${record.tool} (seq ${record.seq}) only read data; there is nothing to undo.`
-          : `Nothing depends on ${record.tool} (seq ${record.seq}); undoing it affects no other action.`;
-      return api.undo.response.parse({ kind: 'none', actionId: record.id, reason });
+    if (record.status !== 'done') {
+      return none(
+        `${record.tool} (seq ${record.seq}) is ${record.status}; it never changed the world`,
+      );
+    }
+    if (engine.effectsOf(record.id).length === 0) {
+      return none(
+        `${record.tool} (seq ${record.seq}) only read; it changed nothing, so there is nothing to undo`,
+      );
     }
     return api.undo.response.parse({ kind: 'plan', plan: engine.proposeUndo(target, depth) });
   }
 
+  /** One run or undo at a time, with the route's 409 and message (assertIdle in lib/server.ts). */
+  private assertIdle(route: string): void {
+    const busy = this.engine.state.runs.find(
+      (r) => r.id === this.activeRunId && (r.status === 'running' || r.status === 'paused'),
+    );
+    if (!busy) return;
+    const what = busy.agentId === UNDO_AGENT ? 'An undo' : `A run by ${busy.agentId}`;
+    throw new ApiError(
+      `${what} is still ${busy.status} on this tenant; wait for it to finish`,
+      409,
+      route,
+    );
+  }
+
+  /** executeUndo in core: started, then done / conflict / skipped per step, then the verdict. */
   async *executeUndo(planId: string, signal?: AbortSignal): AsyncGenerator<RunEvent> {
+    this.assertIdle('/api/undo/execute');
     const engine = this.engine;
     const plan = engine.plan(planId);
-    if (!plan || plan.status === 'executed' || plan.status === 'executing') {
-      const message = plan
-        ? `Plan ${planId} is already ${plan.status}.`
-        : `No undo plan ${planId}.`;
-      yield event({ type: 'error', runId: null, message });
+    if (!plan) throw new ApiError(`No undo plan ${planId} in this graph`, 404, '/api/undo/execute');
+    const tick = (step: UndoStep, status: 'started' | 'done' | 'conflict' | 'skipped') =>
+      event({
+        type: 'undo.step',
+        planId,
+        order: step.order,
+        actionId: step.actionId,
+        mode: step.mode,
+        status,
+        label: step.label,
+        entity: step.entity ? refId(step.entity) : null,
+      });
+    // Re-running a finished plan is a no-op: every step reports skipped.
+    if (plan.status === 'executed') {
+      for (const step of plan.steps) yield tick(step, 'skipped');
+      yield event({ type: 'undo.finished', planId, status: 'executed' });
       return;
     }
     plan.status = 'executing';
     const run = engine.startRun(UNDO_AGENT, plan.summary);
-    const outcomes: string[] = [];
-    for (const step of plan.steps) {
-      const base = {
-        planId,
-        order: step.order,
-        actionId: step.actionId,
-        label: step.label,
-        entity: step.entity ? refId(step.entity) : null,
-      };
-      yield event({ type: 'undo.step', ...base, mode: step.mode, status: 'started' });
-      await sleep(this.undoStepDelayMs, signal);
-      if (engine !== this.engine) return;
-      const status = engine.revert(plan, step, run.id);
-      outcomes.push(status);
-      const mode = status === 'conflict' ? 'conflict' : status === 'skipped' ? 'skip' : step.mode;
-      yield event({ type: 'undo.step', ...base, mode, status });
+    this.activeRunId = run.id;
+    let done = 0;
+    let conflicts = 0;
+    try {
+      for (const step of plan.steps) {
+        yield tick(step, 'started');
+        const status = engine.revert(plan, step, run.id);
+        if (status === 'done') done += 1;
+        if (status === 'conflict') conflicts += 1;
+        yield tick(step, status);
+        await sleep(this.undoStepDelayMs, signal);
+        if (engine !== this.engine) return;
+      }
+      plan.status = conflicts === 0 ? 'executed' : done === 0 ? 'conflict' : 'partial';
+      run.status = 'done';
+      yield event({ type: 'undo.finished', planId, status: plan.status });
+    } finally {
+      if (this.activeRunId === run.id) this.activeRunId = null;
     }
-    const conflicts = outcomes.filter((s) => s === 'conflict').length;
-    plan.status =
-      conflicts === 0 ? 'executed' : conflicts === outcomes.length ? 'conflict' : 'partial';
-    run.status = 'done';
-    yield event({ type: 'undo.finished', planId, status: plan.status });
   }
-
   /** Executes the plan on a fork (the mock's GRAPH.COPY) and diffs the fork's world against live. */
   async rehearse(planId: string): Promise<RehearsalDiff> {
     const plan = this.engine.plan(planId);
