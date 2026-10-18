@@ -291,4 +291,12 @@ describe('graph/queries.cypher', () => {
     );
     expect(committed).toBe(renderCatalogue());
   });
+
+  it("README's query blocks are generated too and up to date", async () => {
+    const { readFileSync } = await import('node:fs');
+    const { resolve } = await import('node:path');
+    const { spliceReadme } = await import('../src/graph/catalogue.js');
+    const readme = readFileSync(resolve(import.meta.dirname, '../../../README.md'), 'utf8');
+    expect(spliceReadme(readme)).toBe(readme);
+  });
 });

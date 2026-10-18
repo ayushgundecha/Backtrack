@@ -248,7 +248,254 @@ Every query is a named, typed function in `packages/core/src/graph/queries.ts` w
 | Q14 | Conflict check | Is the entity still in the state this action left it in, or did something change it since? | undo execution | `state == after` |
 | Q15 | Rehearsal diff | What would this undo change, measured on a fork against live? | `rehearse_undo` | `GRAPH.COPY` fork |
 
-<!-- TODO(BT-062): embed every query from graph/queries.cypher here (Cypher + answers: comment), each with a screenshot of its rows from the demo graph -->
+The Cypher behind each row, generated from the code (depth shown at the default, 5):
+
+<!-- BEGIN GENERATED: queries (pnpm gen:queries) -->
+
+<details><summary><b>Q1</b> · Downstream closure with paths</summary>
+
+*answers:* if I undo this action, which later actions depend on it (transitively, up to depth N), how many hops away, and through which actions?
+
+```cypher
+MATCH p = (root:Action {id: $actionId})<-[:DEPENDS_ON*1..5]-(d:Action)
+WHERE d.kind = 'do' AND all(n IN tail(nodes(p)) WHERE n.status = 'done') AND (d)-[:CAUSED]->(:Effect)
+WITH d, p ORDER BY length(p)
+WITH d, head(collect(p)) AS p
+MATCH (ag:Agent)-[:RAN]->(run:Run)-[:HAS]->(:Step)-[:DID]->(d)
+RETURN d.id AS id, d.tool AS tool, d.seq AS seq, ag.id AS agentId, run.id AS runId,
+  d.reversible AS reversible, d.inverse_tool AS inverseTool, d.mitigation_tool AS mitigationTool,
+  length(p) AS hops, [n IN nodes(p) | n.tool] AS via, [n IN nodes(p) | n.id] AS viaIds
+ORDER BY seq DESC
+```
+
+</details>
+<details><summary><b>Q2</b> · Undo plan order</summary>
+
+*answers:* in what order can these actions be undone, and what did each one change? (seq DESC is a reverse topological order because DEPENDS_ON always points to a smaller seq)
+
+```cypher
+MATCH (a:Action)
+WHERE a.id IN $actionIds
+OPTIONAL MATCH (a)-[:CAUSED]->(f:Effect)-[:ON]->(e:Entity)
+WITH a, f, e ORDER BY f.id
+WITH a, [x IN collect({type: e.type, key: e.key, display: e.display, kind: f.kind}) WHERE x.key IS NOT NULL] AS entities
+RETURN a.id AS id, a.tool AS tool, a.seq AS seq, a.status AS status, a.reversible AS reversible,
+  a.inverse_tool AS inverseTool, a.mitigation_tool AS mitigationTool, entities
+ORDER BY seq DESC
+```
+
+</details>
+<details><summary><b>Q3</b> · Blast radius summary</summary>
+
+*answers:* how big is undoing this action: how many actions, how many of them irreversible, which entities?
+
+```cypher
+MATCH (root:Action {id: $actionId})
+OPTIONAL MATCH p = (root)<-[:DEPENDS_ON*1..5]-(d:Action)
+WHERE d.kind = 'do' AND all(n IN tail(nodes(p)) WHERE n.status = 'done') AND (d)-[:CAUSED]->(:Effect)
+WITH root, collect(DISTINCT d) AS dependents
+UNWIND [root] + dependents AS a
+OPTIONAL MATCH (a)-[:CAUSED]->(:Effect)-[:ON]->(e:Entity)
+RETURN count(DISTINCT a) AS actions,
+  count(DISTINCT CASE WHEN a.reversible = false THEN a.id END) AS irreversible,
+  collect(DISTINCT e.type + ':' + e.key) AS entities
+```
+
+</details>
+<details><summary><b>Q4</b> · Gate: what an irreversible action would lock in</summary>
+
+*answers:* which reversible changes does this pending irreversible action build on, so that doing it would make them impossible to undo cleanly?
+
+```cypher
+MATCH (pending:Action {id: $actionId})-[:DEPENDS_ON*1..10]->(u:Action)
+WHERE u.status = 'done' AND u.kind = 'do' AND u.reversible = true AND (u)-[:CAUSED]->(:Effect)
+RETURN DISTINCT u.id AS id, u.tool AS tool, u.seq AS seq
+ORDER BY seq
+```
+
+</details>
+<details><summary><b>Q5</b> · Policy check</summary>
+
+*answers:* does any policy block, require confirmation for, or warn about this call: this tool, or any tool on these entities, for this agent?
+
+```cypher
+MATCH (pol:Policy)
+WHERE (pol.tool = $tool OR (pol.tool IS NULL AND (pol)-[:APPLIES_TO]->(:Entity)))
+  AND (NOT (pol)-[:ON_TOOL]->(:Agent) OR (pol)-[:ON_TOOL]->(:Agent {id: $agentId}))
+OPTIONAL MATCH (pol)-[:APPLIES_TO]->(e:Entity)
+WITH pol, collect(e.type + ':' + e.key) AS scope
+WHERE size(scope) = 0 OR any(k IN scope WHERE k IN $entities)
+RETURN pol.id AS id, pol.rule AS rule, pol.kind AS kind, pol.ts AS ts, scope,
+  CASE pol.kind WHEN 'block' THEN 0 WHEN 'confirm' THEN 1 ELSE 2 END AS rank
+ORDER BY rank, ts
+```
+
+</details>
+<details><summary><b>Q6</b> · Explain an action</summary>
+
+*answers:* why did this action happen, what did it read and who wrote that, what did it change, and what depends on it?
+
+```cypher
+MATCH (ag:Agent)-[:RAN]->(r:Run)-[:HAS]->(s:Step)-[:DID]->(a:Action {id: $actionId})
+OPTIONAL MATCH (a)-[:READ]->(re:Entity)
+OPTIONAL MATCH (re)<-[:ON]-(rf:Effect)<-[:CAUSED]-(w:Action)
+WHERE w.seq < a.seq
+WITH ag, r, s, a, re, rf, w ORDER BY w.seq DESC
+WITH ag, r, s, a, re, head(collect({id: w.id, tool: w.tool, seq: w.seq, field: rf.field, after: rf.after})) AS wr
+WITH ag, r, s, a, [x IN collect({entity: re.type + ':' + re.key, writerId: wr.id, writerTool: wr.tool,
+  writerSeq: wr.seq, field: wr.field, after: wr.after}) WHERE x.entity IS NOT NULL] AS reads
+OPTIONAL MATCH (a)-[:CAUSED]->(f:Effect)-[:ON]->(e:Entity)
+WITH ag, r, s, a, reads, f, e ORDER BY f.id
+WITH ag, r, s, a, reads, [x IN collect({id: f.id, kind: f.kind, field: f.field, before: f.before,
+  after: f.after, ts: f.ts, type: e.type, key: e.key, display: e.display}) WHERE x.id IS NOT NULL] AS effects
+OPTIONAL MATCH (a)-[:DEPENDS_ON]->(up:Action)
+WITH ag, r, s, a, reads, effects,
+  [u IN collect(DISTINCT up) | {actionId: u.id, tool: u.tool, seq: u.seq}] AS dependsOn
+OPTIONAL MATCH (down:Action)-[:DEPENDS_ON]->(a)
+WITH ag, r, s, a, reads, effects, dependsOn,
+  [x IN collect(DISTINCT down) | {actionId: x.id, tool: x.tool, seq: x.seq}] AS dependedOnBy
+RETURN a.id AS id, a.seq AS seq, a.tool AS tool, a.args AS args, a.result AS result, a.ts AS ts,
+  a.kind AS kind, a.status AS status, a.reversible AS reversible, a.inverse_tool AS inverseTool,
+  a.mitigation_tool AS mitigationTool, r.id AS runId, s.id AS stepId, ag.id AS agentId,
+  s.thought AS thought, reads, effects, dependsOn, dependedOnBy
+```
+
+</details>
+<details><summary><b>Q7</b> · Cross-agent dependents</summary>
+
+*answers:* which other agents' actions depend on this one (through Step, Run and Agent), and how far away are they?
+
+```cypher
+MATCH (rag:Agent)-[:RAN]->(:Run)-[:HAS]->(:Step)-[:DID]->(root:Action {id: $actionId})
+MATCH p = (root)<-[:DEPENDS_ON*1..5]-(d:Action)
+WHERE d.kind = 'do' AND all(n IN tail(nodes(p)) WHERE n.status = 'done') AND (d)-[:CAUSED]->(:Effect)
+MATCH (ag:Agent)-[:RAN]->(:Run)-[:HAS]->(:Step)-[:DID]->(d)
+WHERE ag.id <> rag.id
+RETURN ag.id AS agentId, d.id AS actionId, d.tool AS tool, min(length(p)) AS hops
+ORDER BY hops, actionId
+```
+
+</details>
+<details><summary><b>Q8</b> · Load-bearing actions (PageRank)</summary>
+
+*answers:* which actions does the most other work rest on? (PageRank over DEPENDS_ON: rank flows from dependents to what they depend on)
+
+```cypher
+CALL algo.pageRank('Action', 'DEPENDS_ON') YIELD node, score
+WITH node, score WHERE node.kind = 'do'
+OPTIONAL MATCH (ag:Agent)-[:RAN]->(:Run)-[:HAS]->(:Step)-[:DID]->(node)
+RETURN node.id AS id, node.tool AS tool, node.seq AS seq, node.status AS status, ag.id AS agentId, score
+ORDER BY score DESC, seq
+LIMIT $limit
+```
+
+</details>
+<details><summary><b>Q9</b> · Hinge actions (betweenness)</summary>
+
+*answers:* which actions sit on the most dependency paths between other actions, so that undoing them splits the history?
+
+```cypher
+CALL algo.betweenness({nodeLabels: ['Action'], relationshipTypes: ['DEPENDS_ON']}) YIELD node, score
+WITH node, score WHERE node.kind = 'do'
+OPTIONAL MATCH (ag:Agent)-[:RAN]->(:Run)-[:HAS]->(:Step)-[:DID]->(node)
+RETURN node.id AS id, node.tool AS tool, node.seq AS seq, node.status AS status, ag.id AS agentId, score
+ORDER BY score DESC, seq
+LIMIT $limit
+```
+
+</details>
+<details><summary><b>Q10</b> · Independent clusters (weakly connected components)</summary>
+
+*answers:* which groups of actions are independent of each other, so that undoing one group cannot touch another?
+
+```cypher
+CALL algo.wcc({nodeLabels: ['Action'], relationshipTypes: ['DEPENDS_ON']}) YIELD node, componentId
+WITH componentId, node ORDER BY node.seq
+WITH componentId, collect({id: node.id, tool: node.tool, seq: node.seq}) AS actions
+RETURN componentId, size(actions) AS size, actions
+ORDER BY size DESC, componentId
+```
+
+</details>
+<details><summary><b>Q11</b> · Dependency path between two actions (SPpaths)</summary>
+
+*answers:* how does a later action depend on an earlier one: the shortest DEPENDS_ON route from the earlier action to the later?
+
+```cypher
+MATCH (s:Action {id: $from}), (t:Action {id: $to})
+CALL algo.SPpaths({sourceNode: s, targetNode: t, relTypes: ['DEPENDS_ON'], weightProp: 'weight',
+  relDirection: 'incoming', pathCount: 1, maxLen: 10})
+YIELD path, pathWeight
+RETURN [n IN nodes(path) | n.id] AS ids, [n IN nodes(path) | n.tool] AS tools, pathWeight
+```
+
+</details>
+<details><summary><b>Q12</b> · Entity history across runs and agents</summary>
+
+*answers:* who changed this entity, when, in which run, from what to what?
+
+```cypher
+MATCH (e:Entity {type: $type, key: $key})<-[:ON]-(f:Effect)<-[:CAUSED]-(a:Action)
+MATCH (ag:Agent)-[:RAN]->(r:Run)-[:HAS]->(:Step)-[:DID]->(a)
+RETURN a.seq AS seq, a.id AS actionId, a.tool AS tool, a.kind AS kind, a.status AS status,
+  f.field AS field, f.before AS before, f.after AS after, f.ts AS ts, r.id AS runId, ag.id AS agentId
+ORDER BY seq, actionId
+```
+
+</details>
+<details><summary><b>Q13</b> · Recall</summary>
+
+*answers:* have we undone this action, this tool, or changes to this entity before, and is there a policy about it? (with dates)
+
+```cypher
+MATCH (plan:UndoPlan)-[:ROOT]->(root:Action)
+WHERE root.id = $actionId OR root.tool = $tool
+   OR (plan)-[:REVERTS|COULD_NOT_REVERT]->(:Action {id: $actionId})
+   OR (root)-[:CAUSED]->(:Effect)-[:ON]->(:Entity {type: $type, key: $key})
+RETURN 'plan' AS kind, plan.id AS id, plan.ts AS ts, plan.status AS status, plan.summary AS summary,
+  root.id AS actionId, root.tool AS tool
+UNION
+MATCH (pol:Policy)
+WHERE pol.tool = $tool OR (pol)-[:APPLIES_TO]->(:Entity {type: $type, key: $key})
+RETURN 'policy' AS kind, pol.id AS id, pol.ts AS ts, pol.kind AS status, pol.rule AS summary,
+  null AS actionId, pol.tool AS tool
+```
+
+</details>
+<details><summary><b>Q14</b> · Conflict check</summary>
+
+*answers:* is each entity this action changed still exactly as the action left it (Entity.state vs Effect.after), and if not, which later live action wrote it?
+
+```cypher
+MATCH (a:Action {id: $actionId})-[:CAUSED]->(f:Effect)-[:ON]->(e:Entity)
+OPTIONAL MATCH (e)<-[:ON]-(:Effect)<-[:CAUSED]-(later:Action)
+WHERE later.seq > a.seq AND later.status = 'done'
+WITH f, e, [w IN collect(DISTINCT later) | {id: w.id, tool: w.tool, seq: w.seq}] AS laterWriters
+RETURN f.id AS effectId, f.kind AS kind, f.field AS field, f.before AS before, f.after AS after,
+  e.type AS type, e.key AS key, e.display AS display, e.state AS state, laterWriters
+ORDER BY effectId
+```
+
+</details>
+<details><summary><b>Q15</b> · Rehearsal diff: entity states a plan touches</summary>
+
+*answers:* what state is every entity this plan touches in, in this graph? Run on the live graph and on the GRAPH.COPY fork after the rehearsal; the difference is the diff.
+
+```cypher
+MATCH (:UndoPlan {id: $planId})-[:REVERTS|COULD_NOT_REVERT]->(a:Action)
+OPTIONAL MATCH (a)-[:CAUSED]->(:Effect)-[:ON]->(e1:Entity)
+OPTIONAL MATCH (a)<-[:UNDOES]-(:Action)-[:CAUSED]->(:Effect)-[:ON]->(e2:Entity)
+WITH collect(DISTINCT e1) + collect(DISTINCT e2) AS touched
+UNWIND touched AS e
+RETURN DISTINCT e.type AS type, e.key AS key, e.state AS state
+ORDER BY type, key
+```
+
+</details>
+
+<!-- END GENERATED: queries -->
+
+<!-- TODO(BT-062): a screenshot of each query's rows from the demo graph -->
 
 ## Why a graph, not a log
 

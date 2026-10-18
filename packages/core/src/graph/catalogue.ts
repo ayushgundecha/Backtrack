@@ -37,3 +37,36 @@ export function renderCatalogue(): string {
   }
   return out.join('\n');
 }
+
+export const README_BEGIN = '<!-- BEGIN GENERATED: queries (pnpm gen:queries) -->';
+export const README_END = '<!-- END GENERATED: queries -->';
+
+/** The Q catalogue as collapsible Cypher blocks for the README, between the markers above. */
+export function renderReadmeQueries(): string {
+  const qs = registry
+    .filter((d) => d.id.startsWith('Q'))
+    .sort((a, b) => Number(a.id.slice(1)) - Number(b.id.slice(1)));
+  const blocks = qs.map((d) =>
+    [
+      `<details><summary><b>${d.id}</b> · ${d.title}</summary>`,
+      '',
+      `*answers:* ${d.answers}`,
+      '',
+      '```cypher',
+      d.text(depth(DEFAULT_DEPTH)).trim(),
+      '```',
+      '',
+      '</details>',
+    ].join('\n'),
+  );
+  return [README_BEGIN, '', ...blocks, '', README_END].join('\n');
+}
+
+/** Replace the generated block in a README text (the markers must already be there). */
+export function spliceReadme(readme: string): string {
+  const start = readme.indexOf(README_BEGIN);
+  const end = readme.indexOf(README_END);
+  if (start === -1 || end === -1)
+    throw new Error('README is missing the generated-queries markers');
+  return readme.slice(0, start) + renderReadmeQueries() + readme.slice(end + README_END.length);
+}
