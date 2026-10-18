@@ -6,8 +6,6 @@ Backtrack records every action an AI agent takes as a cause-and-effect graph in 
 
 Built for **Graph Hacks: Context for AI Agents** (WeMakeDevs × FalkorDB), Oct 15–18, 2026. Tracks entered: **Track 1 — Agents That Act on Connected Data** and **Track 2 — Agent Memory and Coordination**.
 
-> This is README v1. Sections marked "pending" are filled in as the build lands (live URL, GIF, screenshots and the generated query file).
-
 ## Contents
 - [The problem](#the-problem)
 - [What Backtrack does](#what-backtrack-does)
@@ -68,9 +66,39 @@ The live deployment runs in replay mode by default: the golden fixtures in `fixt
 3. **Run billing agent.** It reads the open ticket and applies a goodwill credit (`list_open_tickets` → `lookup_ticket` → `apply_credit`). It never talked to the ops agent; it depends on the ops agent's work only through the shared graph.
 4. **Undo.** Press ⌘Z, type "undo the address change". At depth 1 the plan touches `create_ticket` and `send_email`. Drag the depth to 3: the billing agent's `apply_credit` appears, with its path `apply_credit → post_message → create_ticket → update_address`.
 5. **Rehearse, then confirm.** The plan runs on a `GRAPH.COPY` fork, the diff is shown, the fork is deleted. Confirm: the world reverts step by step, `send_email` cannot be reverted and gets a correction draft instead.
-6. **Explain.** Click any action: why it happened, what it read and who wrote that, what it changed, and the exact Cypher.
+6. **Never again.** On the executed plan, record a block policy for `update_address`; run the ops agent again and the gate (Q5) stops it.
+7. **Explain.** Click any action: why it happened, what it read and who wrote that, what it changed, and the exact Cypher.
 
-<!-- TODO(BT-062): 2–3 screenshots of the panel (docs/media/) -->
+![The gate: before send_email the run pauses with the reason Q4 returned](docs/media/panel-gate.png)
+*Step 2, the gate. The amber card quotes the Q4 rows: three reversible changes the email would lock in.*
+
+![Undo plan at depth 3: six steps newest first, the billing agent's credit reached in three hops](docs/media/panel-plan-depth3.png)
+*Step 4 at depth 3. The plan card lists six steps in `seq DESC` order; the cross-agent line and its path come from Q7 and Q1; the graph lights the same closure.*
+
+![Executed plan: five reverted, the email mitigated, the address restored in the world panel](docs/media/panel-executed.png)
+*Step 5 after Confirm. Each tick arrived as an `undo.step` event; the world panel marks the address "Restored".*
+
+<details>
+<summary>More screenshots: rehearsal, time scrubber, explain drawer, PageRank, never again, mobile</summary>
+
+![Rehearsal diff from a GRAPH.COPY fork](docs/media/panel-rehearsal.png)
+*Rehearse ran the plan on `bt:demo:fork:<planId>` and diffed it with Q15 before anything changed.*
+
+![Time scrubber at seq 5: the world as it was right after send_email, later actions dimmed](docs/media/panel-scrubber.png)
+*The scrubber shows `GET /api/world?asOfSeq=5`: Effects folded back to that point.*
+
+![Explain drawer: why, what it read, what it changed, dependencies and the Cypher](docs/media/panel-explain.png)
+*The explain drawer for `update_address`, with the Cypher behind it and a copy button.*
+
+![PageRank over DEPENDS_ON drawn on the graph](docs/media/panel-pagerank.png)
+*"Load-bearing" runs Q8 (`algo.pageRank`) and ranks the actions everything else rests on.*
+
+![Never again: a block policy from the executed plan stops the re-run at update_address](docs/media/panel-never-again.png)
+*Never again records a block policy from the plan's root action; on the next run Q5 stops `update_address` and the run ends before the step that needed it.*
+
+![The panel stacked on a 390 px screen](docs/media/panel-mobile.png)
+
+</details>
 
 ## Graph model
 
@@ -693,7 +721,14 @@ Environment (copy `.env.example` to `.env`):
 
 Deploy: the web panel runs on Vercel (Node runtime) against a FalkorDB Cloud instance, configured with the same variables.
 
-<!-- TODO(BT-062): deploy steps and pre-warm command once BT-052 lands -->
+Deploy steps (written before the first deploy; confirmed after deploy):
+
+1. Create a FalkorDB Cloud free instance and note host, port, username and password (no TLS on the free tier).
+2. From the repository root, link a Vercel project whose Root Directory is `apps/web` (`vercel link`); Vercel installs the pnpm workspace and builds `@backtrack/core` with the app.
+3. Add the variables for Production: `vercel env add FALKORDB_HOST production`, and the same for `FALKORDB_PORT`, `FALKORDB_USERNAME`, `FALKORDB_PASSWORD`, `RESET_TOKEN`, `NEXT_PUBLIC_MOCK` (`0`), and for live mode `OPENROUTER_API_KEY`, `BACKTRACK_MODEL`, `BACKTRACK_MODEL_FALLBACKS`, `BACKTRACK_LLM_DAILY_LIMIT`.
+4. `vercel --prod`.
+5. Seed and warm the instance: `curl -X POST https://<url>/api/reset -H 'content-type: application/json' -d '{"token":"<RESET_TOKEN>"}'`, then `curl https://<url>/api/graph` so the first visitor does not pay the cold start.
+6. Smoke: open the URL, Run ops agent, Approve, Run billing agent, undo the address change at depth 3, Rehearse, Confirm.
 
 ## Hackathon tracks and coverage
 
@@ -731,7 +766,7 @@ Deploy: the web panel runs on Vercel (Node runtime) against a FalkorDB Cloud ins
 | Validate the model's sentence against result rows; fall back to a row-built sentence | `validateSummary()` |
 | Memory is more nodes; read before acting; return dates | `UndoPlan` and `Policy` nodes; `recall` (Q13) returns dates; the ops agent calls it before modifying |
 | Trace per tool call: tool, args, ms, rows | Trace strip on every call |
-| Mind direction and parallel-edge pitfalls; tenant is a graph, not a `WHERE` | Per-query review; bound relationships when counting; `bt:<tenant>`; tenant switcher |
+| Mind direction and parallel-edge pitfalls; tenant is a graph, not a `WHERE` | Per-query review; bound relationships when counting; `bt:<tenant>` (`--tenant` on the CLIs, `tenant` on every route; the panel runs `bt:demo`) |
 
 ## Limitations and future work
 

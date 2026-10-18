@@ -81,7 +81,7 @@ Pointers:
 - Invariant 6 and `AGENTS.md` rule 7: tenant is a graph (`bt:<tenant>`), never a `WHERE` filter; `graphName()` in `packages/core/src/graph/client.ts`.
 - `DEPENDS_ON` derivation cannot cross tenants; there is no tenant predicate to forget.
 - Fork and delete are one command each (`GRAPH.COPY` for rehearsal, `GRAPH.DELETE` for the fork and for reset).
-- `bt:demo`, `bt:test`, `bt:acme` (isolation demo, tenant switcher BT-04C).
+- `bt:demo`, `bt:test`, `bt:acme` (isolation demo via `--tenant acme` on the CLIs; the panel's tenant switcher was cut).
 
 **Answer (Ayush):**
 
