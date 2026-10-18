@@ -59,6 +59,12 @@ interface BacktrackActions {
    * with the outcome now shown in the console, or null after a toasted error.
    */
   requestUndo(request: string | UndoRequest): Promise<UndoOutcome | null>;
+  /**
+   * The proposal on screen asked again at a new depth (the slider moved). Shows the new outcome;
+   * on failure it rejects with the route's message and leaves the old plan up, so the caller can
+   * put the slider back and say why (no toast: the message stays beside the slider).
+   */
+  replanUndo(actionId: string, depth: number): Promise<UndoOutcome>;
   /** Runs the plan on a GRAPH.COPY fork and returns the diff; null after a toasted error. */
   rehearseUndo(planId: string): Promise<RehearsalDiff | null>;
   /** Streams undo.step events into the session; resolves when the stream ends. */
@@ -282,6 +288,13 @@ export function BacktrackProvider({
           toast.error(messageOf(error));
           return null;
         }
+      },
+      async replanUndo(actionId, depth) {
+        if (!client) throw new Error('Not connected yet.');
+        const outcome = await askUndo(client, actionId, depth);
+        setUndoOutcome(outcome);
+        void refresh(client);
+        return outcome;
       },
       async rehearseUndo(planId) {
         if (!client) return null;

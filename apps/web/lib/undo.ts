@@ -138,6 +138,24 @@ export function executionCounts(states: Map<number, StepState>) {
   return counts;
 }
 
+/** A depth the graph was asked about and did not answer (a 429, say), with the route's message. */
+export interface DepthRejection {
+  depth: number;
+  message: string;
+}
+
+/**
+ * The depth the slider shows after an ask at `asked` failed. The slider, the lit closure and the
+ * plan card must agree, so when an answer at another depth is still on screen (`shown`) the slider
+ * goes back to it; the failure is then reported beside the slider instead of silently leaving a
+ * slider at 3 over a plan at 1. With nothing on screen the asked depth stays, next to its error
+ * and a retry. If the user already moved the slider on, their newer choice wins.
+ */
+export function depthAfterFailure(current: number, asked: number, shown: number | null): number {
+  if (current !== asked || shown === null) return current;
+  return shown;
+}
+
 /**
  * The root to re-plan when the shared depth moves, or null. Only a plan that is still a proposal
  * follows the slider: once it is executing or done, the card is a record of what ran at its own

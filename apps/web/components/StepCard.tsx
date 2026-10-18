@@ -74,7 +74,10 @@ export function StepCard({
         <p className="text-fg italic">{step.thought}</p>
         {call ? (
           <p className="flex min-w-0 items-center gap-2">
-            <code className="flex shrink-0 items-center gap-1.5 rounded-sm bg-surface-2 px-1.5 py-0.5 font-mono text-code">
+            <code
+              translate="no"
+              className="flex shrink-0 items-center gap-1.5 rounded-sm bg-surface-2 px-1.5 py-0.5 font-mono text-code"
+            >
               <span
                 aria-hidden
                 className={`size-2 rounded-full ${familyDotClass[familyOf(call.tool)]}`}
@@ -83,6 +86,7 @@ export function StepCard({
             </code>
             {Object.keys(call.args).length > 0 ? (
               <code
+                translate="no"
                 className="truncate font-mono text-code text-fg-muted"
                 title={formatArgs(call.args)}
               >

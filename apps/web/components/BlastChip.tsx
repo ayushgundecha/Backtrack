@@ -7,7 +7,7 @@
  * again at the new depth; nothing is executed.
  */
 import { cn } from 'cn';
-import { LoaderCircle, X } from 'lucide-react';
+import { Hourglass, RotateCw, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
@@ -27,7 +27,7 @@ export function BlastChip({
   /** Extra actions for the selection (the explain button). */
   children?: React.ReactNode;
 }) {
-  const { closure, status, error, depth, setDepth, select } = useSelection();
+  const { closure, status, error, depth, setDepth, select, rejected, retry } = useSelection();
   // The thumb follows the drag; the query runs once on release (or per key press), because each
   // ask proposes a plan and dragging 1 → 5 should not propose four of them.
   const [dragDepth, setDragDepth] = useState(depth);
@@ -48,10 +48,12 @@ export function BlastChip({
             <span className="font-mono font-normal text-fg-muted text-xs"> seq {root.seq}</span>
           ) : null}
         </h3>
+        {/* Static on purpose: only the pending pulse may loop (PLAN §7.3), so no spinner. */}
         {status === 'loading' ? (
-          <LoaderCircle
+          <Hourglass
+            role="img"
             aria-label="Asking the graph"
-            className="size-3.5 shrink-0 animate-spin text-fg-muted motion-reduce:animate-none"
+            className="size-3.5 shrink-0 text-fg-muted"
           />
         ) : null}
         <div className="ml-auto flex shrink-0 items-center gap-1">
@@ -69,7 +71,13 @@ export function BlastChip({
 
       <div aria-live="polite" className={cn('min-h-5 text-sm', !fresh && 'text-fg-muted')}>
         {status === 'error' ? (
-          <p className="text-red">{error}</p>
+          <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-red">
+            {error}
+            <Button variant="secondary" size="xs" onClick={retry}>
+              <RotateCw aria-hidden />
+              Ask again
+            </Button>
+          </p>
         ) : blast ? (
           <p>
             {plural(blast.actions, 'action')} ·{' '}
@@ -110,6 +118,20 @@ export function BlastChip({
           {MIN_DEPTH}–{MAX_DEPTH} hops
         </span>
       </div>
+
+      {/* The slider went back to the depth on screen; this says which depth was refused and why. */}
+      {rejected ? (
+        <p role="alert" className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
+          <span className="text-red">
+            Depth {rejected.depth} was not applied: {rejected.message}
+          </span>
+          <span className="text-fg-muted">Still showing depth {depth}.</span>
+          <Button variant="secondary" size="xs" onClick={() => setDepth(rejected.depth)}>
+            <RotateCw aria-hidden />
+            Try depth {rejected.depth} again
+          </Button>
+        </p>
+      ) : null}
 
       <p className="font-mono text-fg-muted text-xs">
         POST /api/undo · Q1 closure, Q3 blast radius, Q7 other agents · depth{' '}

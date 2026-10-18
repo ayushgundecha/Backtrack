@@ -8,7 +8,7 @@
  * has nothing to turn off here (the world panel's flashes follow their own reduced-motion rule).
  */
 import { cn } from 'cn';
-import { History, LoaderCircle } from 'lucide-react';
+import { History, Hourglass } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
 import { stopLabel } from '@/lib/time-travel';
@@ -56,9 +56,10 @@ export function TimeScrubber() {
           {asOfSeq === null || !current ? 'Live world' : stopLabel(current)}
         </p>
         {status === 'loading' ? (
-          <LoaderCircle
+          <Hourglass
+            role="img"
             aria-label="Reading the world at that point"
-            className="size-3.5 shrink-0 animate-spin text-fg-muted motion-reduce:animate-none"
+            className="size-3.5 shrink-0 text-fg-muted"
           />
         ) : null}
         <Button

@@ -34,7 +34,7 @@ export function UndoConsole() {
   const { state, actions } = useBacktrack();
   // One depth for the whole panel (PLAN §7.3): the blast chip's slider sets it, and every plan
   // the console asks for uses it, so the plan card and the lit closure always agree.
-  const { depth, select } = useSelection();
+  const { depth, select, rejectDepth } = useSelection();
   const [text, setText] = useState('');
   // Set by ⌘Z: while the text is exactly the prefill, the request names the action by id.
   const [target, setTarget] = useState<UndoTarget | null>(null);
@@ -83,13 +83,22 @@ export function UndoConsole() {
     }
   };
 
-  // Moving the slider re-plans a plan that is still only a proposal at the new depth.
+  // Moving the slider re-plans a plan that is still only a proposal at the new depth. If the
+  // graph does not answer (a 429), the slider goes back to the plan's depth and says why, so the
+  // slider and the plan never disagree (lib/undo.ts, depthAfterFailure).
   const outcome = state.undoOutcome;
   const follow = planFollowsDepth(outcome, depth, state.session.undo);
-  const replan = useRef(actions.requestUndo);
-  replan.current = actions.requestUndo;
+  const shownDepth = outcome?.kind === 'plan' ? outcome.plan.depth : null;
+  const replan = useRef(actions.replanUndo);
+  replan.current = actions.replanUndo;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: re-plans when the root or depth moves
   useEffect(() => {
-    if (follow) void replan.current({ actionId: follow, depth });
+    if (!follow || shownDepth === null) return;
+    replan
+      .current(follow, depth)
+      .catch((error: unknown) =>
+        rejectDepth(depth, shownDepth, error instanceof Error ? error.message : String(error)),
+      );
   }, [follow, depth]);
 
   const submit = (event: React.FormEvent<HTMLFormElement>) => {

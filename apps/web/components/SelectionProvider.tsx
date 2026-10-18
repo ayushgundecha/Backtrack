@@ -7,6 +7,7 @@
  */
 import { createContext, use, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { type Closure, closureFromOutcome } from '@/lib/graph-model';
+import { type DepthRejection, depthAfterFailure } from '@/lib/undo';
 import { useBacktrack } from './BacktrackProvider';
 
 export const MIN_DEPTH = 1;
@@ -21,7 +22,20 @@ interface SelectionValue {
   status: ClosureStatus;
   error: string | null;
   select(actionId: string | null): void;
+  /** The user's choice of depth (the slider); clears an earlier rejection. */
   setDepth(depth: number): void;
+  /**
+   * The last depth the graph did not answer, kept on screen until the user picks a depth or an
+   * action again. The slider has already gone back to the depth that is shown.
+   */
+  rejected: DepthRejection | null;
+  /**
+   * An ask at `asked` failed somewhere else (the undo console re-planning): put the slider back on
+   * `shown`, the depth still on screen, and report the failure.
+   */
+  rejectDepth(asked: number, shown: number, message: string): void;
+  /** Ask again at the current depth after an error with nothing to fall back to. */
+  retry(): void;
   /** The action the explain drawer shows; null when it is closed. */
   explainId: string | null;
   openExplain(actionId: string): void;
@@ -48,6 +62,12 @@ export function SelectionProvider({ children }: { children: React.ReactNode }) {
   const [status, setStatus] = useState<ClosureStatus>('idle');
   const [error, setError] = useState<string | null>(null);
   const [explainId, setExplainId] = useState<string | null>(null);
+  const [rejected, setRejected] = useState<DepthRejection | null>(null);
+  const [attempt, setAttempt] = useState(0);
+  const closureRef = useRef(closure);
+  closureRef.current = closure;
+  const selectedRef = useRef(selectedId);
+  selectedRef.current = selectedId;
   const generation = useRef(0);
   const graphRef = useRef(graph);
   graphRef.current = graph;
@@ -77,7 +97,7 @@ export function SelectionProvider({ children }: { children: React.ReactNode }) {
     }
   }, [selectedId, selectedExists, graph]);
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: `signature` re-asks when the answer can change
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `signature` and `attempt` re-ask
   useEffect(() => {
     const id = ++generation.current;
     if (!selectedId || !selectedExists) {
@@ -98,22 +118,40 @@ export function SelectionProvider({ children }: { children: React.ReactNode }) {
       })
       .catch((reason: unknown) => {
         if (id !== generation.current) return;
+        const message = messageOf(reason);
+        // An answer at another depth is still lit: go back to it rather than leave the slider
+        // on a depth nothing on screen reflects (see depthAfterFailure).
+        const shown = closureRef.current?.rootId === selectedId ? closureRef.current.depth : null;
+        if (shown !== null && shown !== depth) {
+          setRejected({ depth, message });
+          setDepthState((current) => depthAfterFailure(current, depth, shown));
+          setStatus('ready');
+          setError(null);
+          return;
+        }
         setStatus('error');
-        setError(messageOf(reason));
+        setError(message);
       });
-  }, [actions, selectedId, selectedExists, depth, signature]);
+  }, [actions, selectedId, selectedExists, depth, signature, attempt]);
 
   // While the drawer is open, picking another action in the graph explains that one instead.
   const select = useCallback((actionId: string | null) => {
+    // A rejection is about the action it was asked for; another action starts clean.
+    if (actionId !== selectedRef.current) setRejected(null);
     setSelectedId(actionId);
     if (actionId) setExplainId((open) => (open ? actionId : open));
   }, []);
   const openExplain = useCallback((actionId: string) => setExplainId(actionId), []);
   const closeExplain = useCallback(() => setExplainId(null), []);
-  const setDepth = useCallback(
-    (next: number) => setDepthState(Math.min(MAX_DEPTH, Math.max(MIN_DEPTH, Math.round(next)))),
-    [],
-  );
+  const setDepth = useCallback((next: number) => {
+    setRejected(null);
+    setDepthState(Math.min(MAX_DEPTH, Math.max(MIN_DEPTH, Math.round(next))));
+  }, []);
+  const rejectDepth = useCallback((asked: number, shown: number, message: string) => {
+    setRejected({ depth: asked, message });
+    setDepthState((current) => depthAfterFailure(current, asked, shown));
+  }, []);
+  const retry = useCallback(() => setAttempt((n) => n + 1), []);
 
   const value = useMemo<SelectionValue>(
     () => ({
@@ -124,6 +162,9 @@ export function SelectionProvider({ children }: { children: React.ReactNode }) {
       error,
       select,
       setDepth,
+      rejected,
+      rejectDepth,
+      retry,
       explainId,
       openExplain,
       closeExplain,
@@ -136,6 +177,9 @@ export function SelectionProvider({ children }: { children: React.ReactNode }) {
       error,
       select,
       setDepth,
+      rejected,
+      rejectDepth,
+      retry,
       explainId,
       openExplain,
       closeExplain,

@@ -2,6 +2,7 @@
  * Pure helpers the run stream renders from: what a step called (even before it was recorded) and
  * how to name the actions it depends on. Kept out of the components so they are unit-tested.
  */
+import type { GraphSnapshot } from '@backtrack/core/contracts';
 import type { SessionState, StepView } from './session';
 
 export interface StepCall {
@@ -56,4 +57,32 @@ export function formatArgs(args: Record<string, unknown>): string {
   return Object.entries(args)
     .map(([key, value]) => `${key}: ${JSON.stringify(value)}`)
     .join(', ');
+}
+
+export interface Approver {
+  userId: string;
+  /** The User node's name in the graph (V3), or null when the snapshot has none for this id. */
+  name: string | null;
+  /** True once the snapshot holds the (User)-[:APPROVED|DENIED]->(Action) edge (V4). */
+  recorded: boolean;
+}
+
+/**
+ * Who answered a gate, as the graph knows them. approval.resolved carries only the user id; the
+ * name comes from the User node in the graph snapshot, and the edge says the answer is recorded.
+ * Nothing is invented: without a User node the card shows the id as the id it is.
+ */
+export function approverOf(
+  graph: GraphSnapshot | null,
+  userId: string,
+  actionId: string,
+  approved: boolean,
+): Approver {
+  const user = graph?.nodes.find((n) => n.label === 'User' && n.id === userId);
+  const name = user && user.title !== userId ? user.title : null;
+  const type = approved ? 'APPROVED' : 'DENIED';
+  const recorded =
+    graph?.links.some((l) => l.type === type && l.source === userId && l.target === actionId) ??
+    false;
+  return { userId, name, recorded };
 }

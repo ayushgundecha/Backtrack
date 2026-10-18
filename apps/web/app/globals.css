@@ -159,6 +159,21 @@
   html {
     @apply bg-bg font-sans text-fg antialiased;
     touch-action: manipulation;
+    /* Taps show the same accent the focus ring uses, not the browser's grey box. */
+    -webkit-tap-highlight-color: color-mix(in oklab, var(--accent) 20%, transparent);
+  }
+  /* Cypher and ids read as typed: JetBrains Mono would otherwise draw `->` as an arrow glyph. */
+  code,
+  pre,
+  kbd,
+  samp {
+    font-variant-ligatures: none;
+  }
+  h1,
+  h2,
+  h3,
+  h4 {
+    text-wrap: balance;
   }
   body {
     font-size: 14px;
@@ -181,14 +196,32 @@
 /*
  * World panel flashes (BT-045): one background fade per change. Accent = changed by an agent,
  * green = put back by an undo step. The element is re-mounted per change, so each plays once.
+ * The tint holds still for 220 ms (the `backwards` fill shows the first frame during the delay),
+ * then fades in 380 ms: the 600 ms of docs/design-system.md, with the motion itself under the
+ * 400 ms of PLAN §7.3. The panel clears the class after 600 ms (FLASH_MS).
  */
 @layer utilities {
   .flash-changed {
-    animation: flash-changed 600ms var(--ease-out-soft);
+    animation: flash-changed 380ms var(--ease-out-soft) 220ms backwards;
   }
   .flash-restored {
-    animation: flash-restored 600ms var(--ease-out-soft);
+    animation: flash-restored 380ms var(--ease-out-soft) 220ms backwards;
   }
+}
+
+/*
+ * Toasts (sonner) slide and fade in 400 ms by default; PLAN §7.3 caps a change's motion under
+ * 400 ms. Unlayered and more specific than sonner's own rules, so it wins without !important
+ * except over the one rule sonner itself marks important. Reduced motion: sonner turns it off.
+ */
+:root [data-sonner-toaster],
+:root [data-sonner-toaster] [data-sonner-toast],
+:root [data-sonner-toaster] [data-sonner-toast] > * {
+  transition-duration: 300ms;
+}
+/* Sonner's stacked-toast exit (500 ms) is a five-attribute selector; :root:root outranks it. */
+:root:root [data-sonner-toaster] [data-sonner-toast][data-removed="true"][data-front="false"] {
+  transition-duration: 300ms;
 }
 
 @keyframes flash-changed {
