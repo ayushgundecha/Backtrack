@@ -2,7 +2,9 @@
 
 Backtrack records every action an AI agent takes as a cause-and-effect graph in FalkorDB, and computes safe undo plans from it: what to revert, in which order, what cannot be reverted, and which other agents are affected.
 
-<!-- TODO(BT-068): 30 s demo GIF here, e.g. ![Backtrack demo](docs/media/demo.gif) -->
+![Backtrack demo: the ops agent runs and pauses at the gate, the billing agent credits the customer, "undo the address change" at depth 3 reaches the credit, rehearse, confirm, the address is restored](docs/media/demo.gif)
+
+*21 seconds, real time, replay mode on a local FalkorDB: run → gate → approve → billing → undo at depth 1 then 3 → rehearse → confirm.*
 
 Built for **Graph Hacks: Context for AI Agents** (WeMakeDevs × FalkorDB), Oct 15–18, 2026. Tracks entered: **Track 1 — Agents That Act on Connected Data** and **Track 2 — Agent Memory and Coordination**.
 

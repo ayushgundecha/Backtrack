@@ -2,6 +2,7 @@
 
 One line per completed task, newest first. Format: `BT-0xx — what changed (how it was verified)`.
 
+- BT-068 — docs/media/demo.gif at the top of the README: the demo scene end to end in real time (21 s, 840 px, 4 MB), recorded headlessly on the production build against local FalkorDB (frames inspected)
 - BT-065 — docs/submission.md: form fields, one-liner, 150-word description, six-post launch thread; the AI disclosure field points to the README section Ayush writes (each claim checked against the README and the demo graph; posts under 280 characters)
 - BT-062 (pre-deploy) — README: panel screenshots in the walkthrough and a gallery, a Never again step, deploy steps marked to confirm after deploy, the cut tenant switcher no longer claimed; live URL still pending BT-052 (`pnpm test`: queries.test.ts checks the README's generated query blocks; images and links checked against docs/media)
 - BT-067 — stranger test on a fresh GitHub clone following the README: fixed the three gaps it hit — the panel now reads the root `.env` like the CLIs (Reset world said RESET_TOKEN was not configured), `pnpm dev`/`start` default to port 3100 instead of colliding with FalkorDB Browser on 3000, and the README's setup gives `cp .env.example .env`, the panel URL and `demo:replay --approve --billing` (plain replay waits at the gate) (clean clone: install, spike, replay, undo, then the full panel walkthrough headless on PORT=3300 through Never again)
