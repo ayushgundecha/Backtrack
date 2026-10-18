@@ -294,32 +294,33 @@ The billing agent's two read-only calls (`list_open_tickets`, `lookup_ticket`) a
 - **World in the graph.** The synthetic world (10 customers, 20 orders, plus the tickets, messages, events, emails and credits the agents create) lives in `Entity.state`, because serverless functions are stateless.
 - **Replay and live modes.** Replay feeds `fixtures/*.json` through the real recorder and emits the same events as the live LLM path (OpenRouter free models, daily budget on `Meta`).
 
-SDK shape (integration is a tool definition plus a wrapper):
-
-<!-- TODO(BT-062): replace with the real snippet once packages/core/src/sdk/registry.ts (BT-020) lands; names below are the planned ones -->
+SDK shape (integration is a tool definition plus `runTool`):
 
 ```ts
-import { defineTool, withBacktrack } from '@backtrack/core';
+import { defineTool, getEntity, runTool } from '@backtrack/core';
 import { z } from 'zod';
 
-// A tool declares whether it is reversible and returns what it actually read and wrote.
+// A tool declares its effect class and returns what it read and what it would write.
+// It never writes itself: the recorder applies `writes` in the same statement that records
+// the action, so the world and its history cannot disagree.
 const updateAddress = defineTool({
   name: 'update_address',
+  description: 'Change the shipping address of an order that has not shipped yet.',
   input: z.object({ orderId: z.string(), address: z.string() }),
-  reversible: true,
-  inverseTool: 'restore_address',
-  async run({ orderId, address }, world) {
-    const order = await world.get('order', orderId);
-    await world.set('order', orderId, { ...order, address });
+  effect: 'reversible', // or 'read', or 'irreversible' with a `mitigation` tool
+  inverse: 'restore_address',
+  undoMode: 'restore', // undo writes back the recorded `before`
+  async run({ g }, { orderId, address }) {
+    const order = await getEntity(g, 'order', orderId);
     return {
-      result: { ok: true },
+      result: { orderId, address },
       reads: [{ type: 'order', key: orderId }],
       writes: [
         {
           kind: 'update',
           entity: { type: 'order', key: orderId },
           field: 'address',
-          before: order.address,
+          before: order?.address ?? null,
           after: address,
         },
       ],
@@ -327,8 +328,13 @@ const updateAddress = defineTool({
   },
 });
 
-// Every call is recorded in the tenant graph and gated before irreversible tools.
-const tools = withBacktrack({ tenant: 'demo', agentId: 'ops-agent' }, { updateAddress });
+// Every call is checked against policies (Q5), gated on what it would lock in (Q4) and recorded
+// with its DEPENDS_ON edges. Replay, live LLM runs and tests all go through this one function.
+const outcome = await runTool(
+  { g, runId, stepId, agentId: 'ops-agent', emit, awaitApproval },
+  updateAddress,
+  { orderId: 'ord_1001', address: '221B Baker Street, London NW1 6XE' },
+);
 ```
 
 Repository layout:
