@@ -22,3 +22,6 @@ coverage/
 # tool-specific local config
 .codex/
 .claude/
+
+# Orb service state written by `amp orb service`
+.amp/
