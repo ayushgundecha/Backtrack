@@ -120,6 +120,9 @@ describe('API routes', () => {
 
   it('serves the graph, the action list and explanations from the recorded history', async () => {
     const snapshot = await client.graph();
+    expect(snapshot.nodes.find((n) => n.label === 'Action' && n.seq === 2)?.title).toBe(
+      'update_address',
+    );
     expect(snapshot.links.filter((l) => l.type === 'DEPENDS_ON')).toHaveLength(8);
     const { actions: list } = await client.actions();
     expect(list.map((a) => a.tool)).toEqual([
@@ -163,7 +166,11 @@ describe('API routes', () => {
     const address = (w: Awaited<ReturnType<typeof client.world>>) =>
       w.entities.find((e) => e.key === 'ord_1001')?.state.address;
     expect(address(await client.world(1))).toBe('14 Marine Drive, Mumbai 400020');
-    expect(address(await client.world())).toBe('221B Baker Street, London NW1 6XE');
+    const now = await client.world();
+    expect(address(now)).toBe('221B Baker Street, London NW1 6XE');
+    // Cards are titled the way a person would name the thing, from its current state.
+    expect(now.entities.find((e) => e.key === 'cust_42')?.display).toBe('Rahul Mehta');
+    expect(now.entities.find((e) => e.key === 'msg_1')?.display).toBe('#ops message');
   });
 
   it('runs FalkorDB algorithms and rejects a path query without endpoints', async () => {

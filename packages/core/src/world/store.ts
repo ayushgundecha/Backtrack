@@ -15,7 +15,13 @@ import {
   listEntities,
   upsertEntities,
 } from '../graph/queries.js';
-import { displayOf, type EntityStateByType, type EntityType, KEY_PREFIX } from './types.js';
+import {
+  displayOf,
+  type EntityStateByType,
+  type EntityType,
+  KEY_PREFIX,
+  titleOf,
+} from './types.js';
 
 export type State = Record<string, unknown>;
 
@@ -125,7 +131,7 @@ export async function worldSnapshot(
       .map((e) => ({
         type: e.ref.type,
         key: e.ref.key,
-        display: e.ref.display ?? displayOf(e.ref.type, e.ref.key),
+        display: titleOf(e.ref.type, e.ref.key, e.state),
         state: e.state as State,
       })),
     traces,

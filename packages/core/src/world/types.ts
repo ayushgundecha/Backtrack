@@ -90,6 +90,30 @@ export const KEY_PREFIX: Record<Exclude<EntityType, 'customer' | 'order'>, strin
 
 export const entityKey = (e: Pick<EntityRef, 'type' | 'key'>): string => `${e.type}:${e.key}`;
 export const displayOf = (type: string, key: string): string => `${type} ${key}`;
+
+/**
+ * What a person calls an entity in its current state ("Rahul Mehta", "#ops message"), for the
+ * world panel. Ids stay in `displayOf`, which plan labels and effects use.
+ */
+export function titleOf(type: string, key: string, state: Record<string, unknown> | null): string {
+  const str = (v: unknown) => (typeof v === 'string' && v ? v : null);
+  if (!state) return displayOf(type, key);
+  switch (type) {
+    case 'customer':
+      return str(state.name) ?? displayOf(type, key);
+    case 'ticket':
+    case 'email':
+      return str(state.subject) ?? displayOf(type, key);
+    case 'message':
+      return str(state.channel) ? `${state.channel} message` : displayOf(type, key);
+    case 'event':
+      return str(state.title) ?? displayOf(type, key);
+    case 'credit':
+      return typeof state.amount === 'number' ? `Credit of ${state.amount}` : displayOf(type, key);
+    default:
+      return key;
+  }
+}
 export const ref = (type: EntityType, key: string): EntityRef => ({
   type,
   key,

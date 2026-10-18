@@ -35,7 +35,7 @@ const str = (v: unknown) => (typeof v === 'string' ? v : undefined);
 function titleOf(label: string, id: string, p: NodeProps): string {
   switch (label) {
     case 'Action':
-      return `${p.seq ?? '?'} ${str(p.tool) ?? id}`;
+      return str(p.tool) ?? id;
     case 'Entity':
       return str(p.display) ?? id;
     case 'Agent':
