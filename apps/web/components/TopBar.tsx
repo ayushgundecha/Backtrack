@@ -13,6 +13,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useBacktrack } from './BacktrackProvider';
+import { TenantSwitch } from './TenantSwitch';
 import { WorldDrawer } from './WorldDrawer';
 
 /** Labels collapse to icons below 1024 px; the accessible name stays the full label. */
@@ -35,27 +36,12 @@ function BarButton({
 }
 
 function ConnectionStatus() {
-  const { state, meta } = useBacktrack();
+  const { meta } = useBacktrack();
   const mock = meta.source === 'mock';
-  const dot =
-    mock || state.connection === 'connecting'
-      ? 'bg-grey-node'
-      : state.connection === 'ok'
-        ? 'bg-green'
-        : 'bg-red';
-  const status = mock
-    ? 'not connected, showing mock data'
-    : { connecting: 'connecting', ok: 'connected', error: 'unreachable' }[state.connection];
 
   return (
     <div className="flex items-center gap-2">
-      <p className="flex items-center gap-2 text-fg-muted text-sm">
-        <span aria-hidden className={`size-2 rounded-full ${dot}`} />
-        <span className="hidden md:inline">FalkorDB · bt:{meta.tenant}</span>
-        <span className="sr-only">
-          FalkorDB graph bt:{meta.tenant}: {status}
-        </span>
-      </p>
+      <TenantSwitch />
       {mock ? (
         <Tooltip>
           <TooltipTrigger asChild>

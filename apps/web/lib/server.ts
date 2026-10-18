@@ -23,6 +23,7 @@ import {
   RATE_LIMITS,
   RateLimiter,
 } from './limits';
+import { TENANT_PATTERN } from './tenant';
 
 /** An error with an HTTP status and a message that is safe and useful to show in the panel. */
 export class HttpError extends Error {
@@ -35,12 +36,10 @@ export class HttpError extends Error {
   }
 }
 
-// Tenants map to graph names (`bt:<tenant>`); a strict shape keeps callers off other graphs.
-const TENANT = /^[a-z0-9][a-z0-9-]{0,31}$/;
-
 /** The tenant graph, bootstrapped and seeded on first use (cheap afterwards). */
 export async function tenantGraph(tenant: string): Promise<TenantGraph> {
-  if (!TENANT.test(tenant)) {
+  // Tenants map to graph names (`bt:<tenant>`); the pattern is shared with the panel's switcher.
+  if (!TENANT_PATTERN.test(tenant)) {
     throw new HttpError(400, 'tenant must be 1–32 lowercase letters, digits or dashes');
   }
   const g = openTenant(tenant);
