@@ -2,6 +2,7 @@
 
 One line per completed task, newest first. Format: `BT-0xx — what changed (how it was verified)`.
 
+- BT-064 — docs/blog.md draft: incidents, rewind vs undo, the PROV model and invariants, Q1/Q2/Q4, the gate as an approval function, what FalkorDB made easy, next steps; six images from docs/media (claims checked against queries.ts, spike-results and the README)
 - BT-068 — docs/media/demo.gif at the top of the README: the demo scene end to end in real time (21 s, 840 px, 4 MB), recorded headlessly on the production build against local FalkorDB (frames inspected)
 - BT-065 — docs/submission.md: form fields, one-liner, 150-word description, six-post launch thread; the AI disclosure field points to the README section Ayush writes (each claim checked against the README and the demo graph; posts under 280 characters)
 - BT-062 (pre-deploy) — README: panel screenshots in the walkthrough and a gallery, a Never again step, deploy steps marked to confirm after deploy, the cut tenant switcher no longer claimed; live URL still pending BT-052 (`pnpm test`: queries.test.ts checks the README's generated query blocks; images and links checked against docs/media)
