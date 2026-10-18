@@ -13,18 +13,33 @@ export function Pane({
 }: {
   id: string;
   title: string;
-  /** The query that produced what the pane shows, e.g. "GET /api/graph · 9 actions". */
-  source?: React.ReactNode;
+  /**
+   * The query that produced what the pane shows, as segments: ["GET /api/graph", "9 actions"].
+   * Joined with " · " and allowed to wrap only between segments, onto at most two lines, so a
+   * long read (a scrubbed world) stays whole instead of being cut mid-word.
+   */
+  source?: string[] | null;
   className?: string;
   children: React.ReactNode;
 }) {
   return (
     <section aria-labelledby={`${id}-title`} className={cn('flex min-h-0 flex-col', className)}>
       <header className="flex h-11 shrink-0 items-center justify-between gap-3 border-b px-4">
-        <h2 id={`${id}-title`} className="font-semibold text-base">
+        <h2 id={`${id}-title`} className="shrink-0 font-semibold text-base">
           {title}
         </h2>
-        {source ? <p className="truncate font-mono text-fg-muted text-xs">{source}</p> : null}
+        {source && source.length > 0 ? (
+          <p className="line-clamp-2 min-w-0 text-right font-mono text-fg-muted text-xs leading-4">
+            {source.map((segment, i) => (
+              <span key={segment} className="whitespace-nowrap">
+                {segment}
+                {i < source.length - 1 ? ' · ' : ''}
+                {/* A break opportunity after each separator, none inside a segment. */}
+                {i < source.length - 1 ? <wbr /> : null}
+              </span>
+            ))}
+          </p>
+        ) : null}
       </header>
       {children}
     </section>

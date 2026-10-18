@@ -8,6 +8,7 @@ import { describe, expect, it } from 'vitest';
 import { MockApiClient } from '../lib/mock';
 import { initialSession, type SessionState, sessionReducer } from '../lib/session';
 import {
+  depthAfterFailure,
   executionCounts,
   isEditableTarget,
   isUndoShortcut,
@@ -181,5 +182,22 @@ describe('one depth for the panel', () => {
     for await (const e of client.executeUndo(outcome.plan.id)) session = sessionReducer(session, e);
     expect(planFollowsDepth(outcome, 3, session.undo)).toBeNull();
     expect(planFollowsDepth({ kind: 'none', actionId: root, reason: 'r' }, 3, null)).toBeNull();
+  });
+
+  it('puts the slider back on the plan when a re-plan is refused, so the two never disagree', async () => {
+    const client = await goldenClient();
+    const outcome = await client.undo({ text: 'undo the address change', depth: 1 });
+    if (outcome.kind !== 'plan') throw new Error('expected a plan');
+
+    // Slider moved 1 → 3; the ask at 3 came back 429. The plan on screen is still at depth 1.
+    const depth = depthAfterFailure(3, 3, outcome.plan.depth);
+    expect(depth).toBe(1);
+    // Back at the plan's depth, nothing re-plans again until the user moves the slider.
+    expect(planFollowsDepth(outcome, depth, null)).toBeNull();
+
+    // The user already moved on to 4 when the refusal for 3 arrived: their choice stands.
+    expect(depthAfterFailure(4, 3, 1)).toBe(4);
+    // Nothing on screen to fall back to: the asked depth stays, beside its error and a retry.
+    expect(depthAfterFailure(3, 3, null)).toBe(3);
   });
 });

@@ -67,7 +67,10 @@ export function TraceStrip({ trace }: { trace: NonNullable<StepView['trace']> })
           </span>
         </div>
         {/* Wrapped, and without ligatures, so `->` reads as typed and nothing hides off-screen. */}
-        <pre className="whitespace-pre-wrap break-words font-mono text-code text-fg-muted [font-variant-ligatures:none]">
+        <pre
+          translate="no"
+          className="whitespace-pre-wrap break-words font-mono text-code text-fg-muted [font-variant-ligatures:none]"
+        >
           <code>{trace.cypher}</code>
         </pre>
       </div>

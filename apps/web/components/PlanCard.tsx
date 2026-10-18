@@ -19,6 +19,7 @@ import { agentName } from '@/lib/tools';
 import { executionCounts, planPhase, planStepStates, rootStep, type StepState } from '@/lib/undo';
 import { useBacktrack } from './BacktrackProvider';
 import { NeverAgainForm } from './NeverAgain';
+import { useSelection } from './SelectionProvider';
 import { StatusBadge } from './StatusBadge';
 
 /** Icon for a step before it runs: ↩ revert, ⚠ irreversible (gets a mitigation), else neutral. */
@@ -129,12 +130,12 @@ function ViaPath({ via }: { via: string[] }) {
   );
 }
 
-/** Scrolls a descendant into view, instantly when the user asked for reduced motion. */
+/**
+ * Scrolls a descendant into view, instantly: the tick or the diff card already animates for this
+ * change, and a smooth scroll (of browser-chosen length) would be a second motion (PLAN §7.3).
+ */
 function reveal(root: HTMLElement | null, selector: string) {
-  root?.querySelector(selector)?.scrollIntoView({
-    block: 'nearest',
-    behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
-  });
+  root?.querySelector(selector)?.scrollIntoView({ block: 'nearest', behavior: 'auto' });
 }
 
 /**
@@ -144,6 +145,7 @@ function reveal(root: HTMLElement | null, selector: string) {
  */
 export function PlanCard({ plan }: { plan: UndoPlan }) {
   const { state, actions } = useBacktrack();
+  const { rejected } = useSelection();
   const [diff, setDiff] = useState<RehearsalDiff | null>(null);
   const [rehearsing, setRehearsing] = useState(false);
   const [showPaths, setShowPaths] = useState(false);
@@ -202,6 +204,15 @@ export function PlanCard({ plan }: { plan: UndoPlan }) {
         (Q3 blast radius
         {started ? ')' : '; the depth slider in the graph changes it)'}
       </p>
+      {/* A refused re-plan leaves this plan as it was; say so here too, not only by the slider. */}
+      {!started && rejected && rejected.depth !== plan.depth ? (
+        <p className="text-sm">
+          <span className="text-red">
+            Re-planning at depth {rejected.depth} failed: {rejected.message}
+          </span>{' '}
+          <span className="text-fg-muted">This plan is still the depth {plan.depth} one.</span>
+        </p>
+      ) : null}
 
       {/* Cross-agent reach first: it is the line a reviewer most needs before confirming. */}
       {plan.crossAgent.map((c) => (
@@ -287,11 +298,15 @@ export function PlanCard({ plan }: { plan: UndoPlan }) {
       <div className="sticky -bottom-3 -mx-3 -mb-3 flex min-h-15 flex-wrap items-center gap-2 border-t bg-surface px-3 py-3">
         {started ? (
           <>
-            <p className="flex items-center gap-2 text-sm" aria-live="polite">
+            <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm" aria-live="polite">
               <StatusBadge status={phase} />
               {phase === 'executing'
                 ? `${counts.finished} of ${plan.steps.length} steps done`
                 : `${counts.reverted} reverted, ${counts.mitigated} mitigated, ${counts.conflict} in conflict, ${counts.skipped} skipped`}
+              {/* The counts are the executor's own undo.step events, not a client tally. */}
+              <span className="font-mono text-fg-muted text-xs">
+                undo.step events · POST /api/undo/execute
+              </span>
             </p>
             {finished && rootStep(plan) ? (
               <Button

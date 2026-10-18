@@ -63,7 +63,7 @@ export function Shell() {
           title="Graph"
           source={
             counts
-              ? `GET /api/graph · ${counts.actions} actions · ${counts.dependencies} DEPENDS_ON`
+              ? ['GET /api/graph', `${counts.actions} actions`, `${counts.dependencies} DEPENDS_ON`]
               : null
           }
           className="border-b lg:border-r lg:border-b-0"
@@ -83,7 +83,7 @@ export function Shell() {
         <Pane
           id="world"
           title="World"
-          source={entities === undefined ? null : `${worldRoute} · ${entities} entities`}
+          source={entities === undefined ? null : [worldRoute, `${entities} entities`]}
           className="lg:hidden xl:flex"
         >
           <PaneBody>

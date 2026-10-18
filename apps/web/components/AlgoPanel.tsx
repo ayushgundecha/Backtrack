@@ -8,7 +8,7 @@
  */
 import type { GraphSnapshot } from '@backtrack/core/contracts';
 import { cn } from 'cn';
-import { LoaderCircle, Route, X } from 'lucide-react';
+import { Hourglass, Route, X } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import {
@@ -225,10 +225,7 @@ export function AlgoPanel({ algo, graph }: { algo: AlgoState; graph: GraphSnapsh
           </Button>
         ))}
         {algo.loading ? (
-          <LoaderCircle
-            aria-label="Asking FalkorDB"
-            className="size-3.5 animate-spin text-fg-muted motion-reduce:animate-none"
-          />
+          <Hourglass role="img" aria-label="Asking FalkorDB" className="size-3.5 text-fg-muted" />
         ) : null}
       </div>
 

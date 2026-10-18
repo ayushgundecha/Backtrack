@@ -1,8 +1,10 @@
 'use client';
 
+import type { GraphSnapshot } from '@backtrack/core/contracts';
 import { Check, ShieldAlert, X } from 'lucide-react';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
+import { approverOf } from '@/lib/run-view';
 import type { ApprovalView } from '@/lib/session';
 import { useBacktrack } from './BacktrackProvider';
 
@@ -12,7 +14,7 @@ import { useBacktrack } from './BacktrackProvider';
  * never rephrases it, so what is on screen is exactly what the graph returned.
  */
 export function ApprovalCard({ approval }: { approval: ApprovalView }) {
-  const { actions } = useBacktrack();
+  const { actions, state } = useBacktrack();
   // Disables both buttons while the answer is in flight so one click cannot become two answers.
   const [sending, setSending] = useState<boolean | null>(null);
   const pending = approval.state === 'pending';
@@ -68,19 +70,36 @@ export function ApprovalCard({ approval }: { approval: ApprovalView }) {
           </Button>
         </div>
       ) : (
-        <p
-          className={`flex items-center gap-1.5 text-sm ${approval.state === 'approved' ? 'text-green' : 'text-red'}`}
-        >
-          {approval.state === 'approved' ? (
-            <Check aria-hidden className="size-4" />
-          ) : (
-            <X aria-hidden className="size-4" />
-          )}
-          {approval.state === 'approved'
-            ? `Approved by ${approval.by ?? 'a human'}.`
-            : `Denied by ${approval.by ?? 'a human'}. ${approval.tool} was not run.`}
-        </p>
+        <Answered approval={approval} graph={state.graph} />
       )}
     </section>
+  );
+}
+
+/**
+ * "Approved by Ayush": the name is the User node's (V3) and the muted line names the edge that
+ * records the answer (V4) once the graph has it. Without a User node the id is shown as an id.
+ */
+function Answered({ approval, graph }: { approval: ApprovalView; graph: GraphSnapshot | null }) {
+  const approved = approval.state === 'approved';
+  const who = approval.by ? approverOf(graph, approval.by, approval.actionId, approved) : null;
+  const name = who ? (who.name ?? `user ${who.userId}`) : 'a human';
+  const Icon = approved ? Check : X;
+  return (
+    <div className="flex flex-col gap-0.5">
+      <p className={`flex items-center gap-1.5 text-sm ${approved ? 'text-green' : 'text-red'}`}>
+        <Icon aria-hidden className="size-4 shrink-0" />
+        {approved ? `Approved by ${name}.` : `Denied by ${name}. ${approval.tool} was not run.`}
+      </p>
+      {who?.recorded ? (
+        // No ligatures, so `->` reads as typed; wraps only between the edge and the route.
+        <p className="pl-5.5 font-mono text-fg-muted text-xs [font-variant-ligatures:none]">
+          <span className="[overflow-wrap:anywhere]">
+            {`(:User {id: '${who.userId}'})-[:${approved ? 'APPROVED' : 'DENIED'}]->(:Action)`}
+          </span>{' '}
+          <span className="whitespace-nowrap">· GET /api/graph</span>
+        </p>
+      ) : null}
+    </div>
   );
 }

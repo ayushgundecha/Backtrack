@@ -430,7 +430,10 @@ function CypherBlock({ trace }: { trace: Explain['trace'] }) {
           {copied ? 'Copied' : 'Copy Cypher'}
         </Button>
       </div>
-      <pre className="max-h-80 overflow-y-auto whitespace-pre-wrap rounded-md bg-surface-2 p-2 font-mono text-xs leading-relaxed [overflow-wrap:anywhere]">
+      <pre
+        translate="no"
+        className="max-h-80 overflow-y-auto whitespace-pre-wrap rounded-md bg-surface-2 p-2 font-mono text-xs leading-relaxed [overflow-wrap:anywhere]"
+      >
         <code>{trace.cypher}</code>
       </pre>
       {Object.keys(trace.params).length > 0 ? (

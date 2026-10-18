@@ -2,10 +2,10 @@
  * What a step card shows at each point of the stream: the call is known from the gate before it is
  * recorded, a denied call keeps its tool, and dependencies are named by tool and seq.
  */
-import type { RunEvent } from '@backtrack/core/contracts';
+import type { GraphSnapshot, RunEvent } from '@backtrack/core/contracts';
 import { describe, expect, it } from 'vitest';
 import { MockApiClient } from '../lib/mock';
-import { recordedActions, stepCall, stepPhase } from '../lib/run-view';
+import { approverOf, recordedActions, stepCall, stepPhase } from '../lib/run-view';
 import { initialSession, pendingApproval, type SessionState, sessionReducer } from '../lib/session';
 
 /** Streams the ops run, folding every event, and answers the gate with `approved`. */
@@ -90,5 +90,38 @@ describe('run view', () => {
     if (!step) throw new Error('expected a step');
     expect(stepPhase(step)).toBe('blocked');
     expect(stepCall(step)).toEqual({ tool: 'send_email', args: {}, actionId: 'act_9' });
+  });
+});
+
+describe('approverOf', () => {
+  const graph: GraphSnapshot = {
+    nodes: [
+      { id: 'ayush', label: 'User', title: 'Ayush' },
+      { id: 'act_5', label: 'Action', title: 'send_email', tool: 'send_email', seq: 5 },
+    ],
+    links: [{ source: 'ayush', target: 'act_5', type: 'APPROVED' }],
+  };
+
+  it("names the approver from the graph's User node and sees the APPROVED edge", () => {
+    expect(approverOf(graph, 'ayush', 'act_5', true)).toEqual({
+      userId: 'ayush',
+      name: 'Ayush',
+      recorded: true,
+    });
+    // A denial is a different edge; the APPROVED one does not count for it.
+    expect(approverOf(graph, 'ayush', 'act_5', false).recorded).toBe(false);
+  });
+
+  it('claims no name the graph does not hold', () => {
+    expect(approverOf(null, 'ayush', 'act_5', true)).toEqual({
+      userId: 'ayush',
+      name: null,
+      recorded: false,
+    });
+    const unnamed: GraphSnapshot = {
+      nodes: [{ id: 'ayush', label: 'User', title: 'ayush' }],
+      links: [],
+    };
+    expect(approverOf(unnamed, 'ayush', 'act_5', true).name).toBeNull();
   });
 });
