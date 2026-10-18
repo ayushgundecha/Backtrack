@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { UndoOutcome } from '../src/contracts/types.js';
+import { setPlanStatus } from '../src/graph/queries.js';
 import { defineTool, ToolRegistry } from '../src/sdk/registry.js';
 import { executeUndo, loadPlan, planUndo } from '../src/sdk/undo.js';
 import { getEntity, setEntity } from '../src/world/store.js';
@@ -77,6 +78,26 @@ describe('planUndo: the four honest outcomes', () => {
       'update_address',
     ]);
     expect(o.plan.crossAgent).toEqual([]);
+  });
+
+  it('asking again for the same plan reuses it instead of recording a copy', async () => {
+    const planIds = async () =>
+      (await g.read<{ id: string }>('MATCH (p:UndoPlan) RETURN p.id AS id ORDER BY id')).rows;
+    const first = await plan('undo the address change', 3);
+    const again = await plan('undo the address change', 3);
+    const deeper = await plan('undo the address change', 1);
+    if (first.kind !== 'plan' || again.kind !== 'plan' || deeper.kind !== 'plan') {
+      throw new Error('expected plans');
+    }
+    expect(again.plan).toEqual(first.plan);
+    // A different depth is a different plan (different steps), so it is recorded.
+    expect(deeper.plan.id).not.toBe(first.plan.id);
+    expect(await planIds()).toHaveLength(2);
+    // Once a plan has been acted on (here: rehearsed), asking again proposes a fresh one.
+    await setPlanStatus(g, { planId: first.plan.id, status: 'rehearsed' });
+    const later = await plan('undo the address change', 3);
+    if (later.kind !== 'plan') throw new Error('expected a plan');
+    expect(later.plan.id).not.toBe(first.plan.id);
   });
 
   it('none: a read-only action changed nothing', async () => {

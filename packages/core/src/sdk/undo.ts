@@ -21,6 +21,7 @@ import {
   type ActionRow,
   compensations,
   createPlan,
+  findProposedPlan,
   getActions,
   getPlan,
   markConflict,
@@ -182,6 +183,8 @@ export async function planUndo(
   });
 
   const b = blast.rows[0] ?? { actions: steps.length, irreversible: 0, entities: [] };
+  const summary = summarise(root, steps, cross.rows, depth);
+
   const plan: UndoPlan = {
     id: newId('plan'),
     rootActionId: root.id,
@@ -190,9 +193,26 @@ export async function planUndo(
     steps,
     blast: { actions: b.actions, irreversible: b.irreversible, entities: b.entities, depth },
     crossAgent: cross.rows,
-    summary: summarise(root, steps, cross.rows, depth),
+    summary,
     ts: Date.now(),
   };
+  // Asking again (the graph view previews a closure on every click) must not pile up copies:
+  // an identical plan still waiting for a decision keeps its id instead of being recorded twice.
+  const same = await findProposedPlan(g, {
+    rootId: root.id,
+    depth,
+    stepIds: steps.map((s) => s.actionId),
+    summary,
+  });
+  traces.push(traceOf('P8', same));
+  const existing = same.rows[0];
+  if (existing) {
+    return {
+      outcome: { kind: 'plan', plan: { ...plan, id: existing.id, ts: existing.ts } },
+      traces,
+    };
+  }
+
   const saved = await createPlan(g, {
     planId: plan.id,
     rootId: root.id,

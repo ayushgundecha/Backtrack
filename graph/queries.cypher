@@ -435,6 +435,17 @@ MATCH (:Action)-[u:UNDOES]->(:Action {id: $actionId})
 WHERE ID(u) >= 0
 RETURN count(u) AS n;
 
+// P8 · Find an identical proposed plan (read)
+// answers: has this exact plan (same root, depth and steps in the same order) already been proposed and not acted on?
+MATCH (p:UndoPlan {status: 'proposed', depth: $depth, summary: $summary})-[:ROOT]->(:Action {id: $rootId})
+MATCH (p)-[r:REVERTS|COULD_NOT_REVERT]->(a:Action)
+WITH p, a.id AS id ORDER BY r.order
+WITH p, collect(id) AS ids
+WHERE ids = $stepIds
+RETURN p.id AS id, p.ts AS ts
+ORDER BY ts DESC
+LIMIT 1;
+
 // ==============================================================================================
 // Views for the UI and the agents
 // ==============================================================================================

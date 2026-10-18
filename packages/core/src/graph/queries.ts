@@ -502,6 +502,25 @@ FOREACH (_ IN CASE WHEN $stepModes[i] = 'mitigation' THEN [] ELSE [1] END |
 RETURN count(a) AS steps`,
 });
 
+export const findProposedPlan = define<
+  { rootId: string; depth: number; stepIds: string[]; summary: string },
+  { id: string; ts: number }
+>({
+  id: 'P8',
+  title: 'Find an identical proposed plan',
+  answers:
+    'has this exact plan (same root, depth and steps in the same order) already been proposed and not acted on?',
+  mode: 'read',
+  text: `MATCH (p:UndoPlan {status: 'proposed', depth: $depth, summary: $summary})-[:ROOT]->(:Action {id: $rootId})
+MATCH (p)-[r:REVERTS|COULD_NOT_REVERT]->(a:Action)
+WITH p, a.id AS id ORDER BY r.order
+WITH p, collect(id) AS ids
+WHERE ids = $stepIds
+RETURN p.id AS id, p.ts AS ts
+ORDER BY ts DESC
+LIMIT 1`,
+});
+
 export interface PlanRow {
   id: string;
   rootId: string;
