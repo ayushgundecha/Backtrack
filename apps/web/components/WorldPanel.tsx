@@ -11,12 +11,15 @@
 import type { WorldSnapshot } from '@backtrack/core/contracts';
 import { cn } from 'cn';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Pin, RotateCcw } from 'lucide-react';
+import { History, Pin, RotateCcw } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { stopLabel } from '@/lib/time-travel';
 import { useReducedMotion } from '@/lib/use-reduced-motion';
 import { type ActiveFlash, type Flashes, useWorldFlashes } from '@/lib/use-world-flashes';
 import { entityId } from '@/lib/world-diff';
 import { useBacktrack } from './BacktrackProvider';
+import { useTime } from './TimeProvider';
 
 type WorldEntity = WorldSnapshot['entities'][number];
 
@@ -157,7 +160,9 @@ function announce(flashes: Flashes): string {
 /** Body of the world panel, shared by the right column and the 1024–1279 px drawer. */
 export function WorldPanel() {
   const { state } = useBacktrack();
-  const { world } = state;
+  // The scrubber's frame while scrubbed, the live world at now (TimeProvider decides).
+  const time = useTime();
+  const { world } = time;
   const flashes = useWorldFlashes(world, state.session);
   if (!world) {
     return (
@@ -182,6 +187,7 @@ export function WorldPanel() {
       <p aria-live="polite" className="sr-only">
         {announce(flashes)}
       </p>
+      {time.asOfSeq !== null ? <PastBanner /> : null}
       <section aria-labelledby="world-pinned" className="flex flex-col gap-2">
         <h3 id="world-pinned" className="flex items-center gap-1.5 text-fg-muted text-xs">
           <Pin aria-hidden className="size-3" />
@@ -210,6 +216,35 @@ export function WorldPanel() {
           <EntityList entities={ofType('customer')} flashes={flashes} empty="No customers." />
         </TabsContent>
       </Tabs>
+    </div>
+  );
+}
+
+/**
+ * Says which point in time the cards show. It names the frame that is on screen (its own
+ * asOfSeq), not the stop being asked for, so a slow read never labels the wrong world.
+ */
+function PastBanner() {
+  const { world, stops, scrubTo } = useTime();
+  const shown = world?.asOfSeq ?? null;
+  const stop =
+    shown === null ? null : (stops.find((s) => s.kind !== 'now' && s.asOfSeq === shown) ?? null);
+  return (
+    <div className="flex items-start gap-2 rounded-lg border bg-surface-2 px-3 py-2 text-sm">
+      <History aria-hidden className="mt-0.5 size-4 shrink-0 text-fg-muted" />
+      <p className="min-w-0 flex-1">
+        {shown === null ? (
+          'Reading the past world…'
+        ) : (
+          <>
+            {stop ? stopLabel(stop) : `After seq ${shown}`}.{' '}
+            <span className="text-fg-muted">Every later change is rolled back to its before.</span>
+          </>
+        )}
+      </p>
+      <Button variant="secondary" size="xs" onClick={() => scrubTo(null)}>
+        Now
+      </Button>
     </div>
   );
 }

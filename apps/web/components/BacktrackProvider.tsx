@@ -61,6 +61,8 @@ interface BacktrackActions {
    */
   previewUndo(actionId: string, depth: number): Promise<UndoOutcome>;
   explain(actionId: string): Promise<Explain>;
+  /** The world right after action `asOfSeq` (time scrubber); the live world is `state.world`. */
+  worldAt(asOfSeq: number): Promise<WorldSnapshot>;
 }
 
 interface BacktrackMeta {
@@ -290,6 +292,10 @@ export function BacktrackProvider({
       explain(actionId) {
         if (!client) return Promise.reject(new Error('Not connected yet.'));
         return client.explain(actionId);
+      },
+      worldAt(asOfSeq) {
+        if (!client) return Promise.reject(new Error('Not connected yet.'));
+        return client.world(asOfSeq);
       },
     }),
     [client, consume, refresh, askUndo],

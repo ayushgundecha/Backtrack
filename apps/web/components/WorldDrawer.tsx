@@ -10,6 +10,7 @@ import {
   SheetTitle,
   SheetTrigger,
 } from '@/components/ui/sheet';
+import { TimeScrubber } from './TimeScrubber';
 import { WorldPanel } from './WorldPanel';
 
 /** Between 1024 and 1279 px the world panel moves into a drawer so graph and run stream get 50/50. */
@@ -29,6 +30,9 @@ export function WorldDrawer() {
         </SheetHeader>
         <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-4">
           <WorldPanel />
+        </div>
+        <div className="shrink-0 border-t p-4">
+          <TimeScrubber />
         </div>
       </SheetContent>
     </Sheet>

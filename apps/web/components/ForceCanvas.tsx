@@ -131,6 +131,8 @@ export interface ForceCanvasProps {
   graph: ViewGraph;
   closure: Closure | null;
   selectedId: string | null;
+  /** Node ids dimmed whatever is lit: recorded after the time scrubber's position. */
+  faded?: Set<string>;
   reducedMotion: boolean;
   agentLabels: Record<string, string>;
   onSelect(actionId: string | null): void;
@@ -142,6 +144,7 @@ export default function ForceCanvas({
   graph,
   closure,
   selectedId,
+  faded,
   reducedMotion,
   agentLabels,
   onSelect,
@@ -268,7 +271,7 @@ export default function ForceCanvas({
 
   const lit = closure?.lit ?? null;
   const litLinks = closure?.litLinks ?? null;
-  const isLit = useCallback((id: string) => !lit || lit.has(id), [lit]);
+  const isLit = useCallback((id: string) => (!lit || lit.has(id)) && !faded?.has(id), [lit, faded]);
 
   const paintNode = useCallback(
     (node: Node, ctx: CanvasRenderingContext2D, scale: number) => {
@@ -385,7 +388,7 @@ export default function ForceCanvas({
         groups.set(n.agentId, group);
       }
       for (const [agentId, nodes] of groups) {
-        const anyLit = !lit || nodes.some((n) => lit.has(n.id));
+        const anyLit = nodes.some((n) => isLit(n.id));
         ctx.globalAlpha = anyLit ? 1 : 0.5;
         const hull = convexHull(nodes.map((n) => [n.x ?? 0, n.y ?? 0] as const));
         const tracePath = () => {
@@ -425,12 +428,15 @@ export default function ForceCanvas({
       ctx.lineJoin = 'miter';
       ctx.lineCap = 'butt';
     },
-    [data.nodes, lit, palette, agentLabels],
+    [data.nodes, isLit, palette, agentLabels],
   );
 
   const linkOn = useCallback(
-    (l: Link) => !litLinks || litLinks.has(linkKey(endId(l.source), endId(l.target), l.type)),
-    [litLinks],
+    (l: Link) =>
+      (!litLinks || litLinks.has(linkKey(endId(l.source), endId(l.target), l.type))) &&
+      !faded?.has(endId(l.source)) &&
+      !faded?.has(endId(l.target)),
+    [litLinks, faded],
   );
   const linkColor = useCallback(
     (l: Link) => {

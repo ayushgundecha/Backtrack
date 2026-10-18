@@ -9,6 +9,8 @@ import { useBacktrack } from './BacktrackProvider';
 import { GraphView, graphCounts } from './GraphView';
 import { Pane, PaneBody } from './Pane';
 import { RunStream } from './RunStream';
+import { useTime } from './TimeProvider';
+import { TimeScrubber } from './TimeScrubber';
 import { TopBar } from './TopBar';
 import { UndoConsole } from './UndoConsole';
 import { WorldPanel } from './WorldPanel';
@@ -16,7 +18,13 @@ import { WorldPanel } from './WorldPanel';
 export function Shell() {
   const { state } = useBacktrack();
   const counts = graphCounts(state.graph);
-  const entities = state.world?.entities.length;
+  // The world pane names the read it shows: the live world, or the scrubber's frame.
+  const { world } = useTime();
+  const entities = world?.entities.length;
+  const worldRoute =
+    world?.asOfSeq === null || world?.asOfSeq === undefined
+      ? 'GET /api/world'
+      : `GET /api/world?asOfSeq=${world.asOfSeq}`;
 
   return (
     <div className="flex min-h-dvh flex-col lg:h-dvh">
@@ -56,12 +64,15 @@ export function Shell() {
         <Pane
           id="world"
           title="World"
-          source={entities === undefined ? null : `GET /api/world · ${entities} entities`}
+          source={entities === undefined ? null : `${worldRoute} · ${entities} entities`}
           className="lg:hidden xl:flex"
         >
           <PaneBody>
             <WorldPanel />
           </PaneBody>
+          <div className="shrink-0 border-t bg-surface p-4">
+            <TimeScrubber />
+          </div>
         </Pane>
       </main>
     </div>

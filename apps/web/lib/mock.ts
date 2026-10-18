@@ -674,13 +674,27 @@ class MockEngine {
     return 'done';
   }
 
-  /** The world now, or folded from the seed through every Effect with seq <= asOfSeq. */
+  /**
+   * The world now, or as it was right after action `asOfSeq`. Same fold as the real
+   * worldSnapshot (W4): start from the current state and put back the `before` of every later
+   * Effect, newest first. Folding backwards (not forward from the seed) keeps the two in step
+   * even when a state was written outside any action.
+   */
   world(asOfSeq?: number): WorldEntity[] {
     let entities = this.state.entities;
     if (asOfSeq !== undefined) {
-      entities = seedEntities();
-      for (const effect of this.state.effects)
-        if (effect.seq <= asOfSeq) applyChange(entities, effect);
+      entities = structuredClone(this.state.entities);
+      const later = this.state.effects
+        .filter((effect) => effect.seq > asOfSeq)
+        .sort((a, b) => b.seq - a.seq || b.id.localeCompare(a.id));
+      for (const effect of later) {
+        const entity = entities[refId(effect.entity)];
+        if (!entity) continue;
+        const before = structuredClone(effect.before) as EntityState | null;
+        entity.state =
+          effect.field === null ? before : { ...(entity.state ?? {}), [effect.field]: before };
+        if (entity.state) entity.display = worldTitle(entity.type, entity.state);
+      }
     }
     return Object.values(entities)
       .filter((e) => e.state !== null)

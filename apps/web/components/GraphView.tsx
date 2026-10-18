@@ -12,12 +12,14 @@ import dynamic from 'next/dynamic';
 import { useCallback, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { stepSelection, toViewGraph, type ViewNode } from '@/lib/graph-model';
+import { laterNodes } from '@/lib/time-travel';
 import { agentName } from '@/lib/tools';
 import { useReducedMotion } from '@/lib/use-reduced-motion';
 import { useBacktrack } from './BacktrackProvider';
 import { BlastChip } from './BlastChip';
 import { EmptyState } from './EmptyState';
 import { useSelection } from './SelectionProvider';
+import { useTime } from './TimeProvider';
 
 // The library reads `window` on import, so it is loaded in the browser only, in its own chunk.
 const ForceCanvas = dynamic(() => import('./ForceCanvas'), {
@@ -56,6 +58,12 @@ export function GraphView() {
   const selection = useSelection();
   const reducedMotion = useReducedMotion();
   const view = useMemo(() => (graph ? toViewGraph(graph) : null), [graph]);
+  // Scrubbed back in time: what was recorded after that point dims (BT-047).
+  const time = useTime();
+  const faded = useMemo(
+    () => (graph ? laterNodes(graph, time.asOfSeq, time.frame) : new Set<string>()),
+    [graph, time.asOfSeq, time.frame],
+  );
 
   // Args are not in the snapshot; the run stream carried them in action.recorded.
   const argsById = useMemo(() => {
@@ -195,13 +203,14 @@ export function GraphView() {
               dependsOn.get(n.id)?.length
                 ? `, depends on seq ${dependsOn.get(n.id)?.join(', ')}`
                 : ''
-            }`}
+            }${faded.has(n.id) ? ', recorded after the scrubbed time' : ''}`}
           </div>
         ))}
         <ForceCanvas
           graph={view}
           closure={closure && closure.rootId === selection.selectedId ? closure : null}
           selectedId={selection.selectedId}
+          faded={faded}
           reducedMotion={reducedMotion}
           agentLabels={agentName}
           onSelect={selection.select}
