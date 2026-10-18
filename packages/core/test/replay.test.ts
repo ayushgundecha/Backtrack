@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { loadRunFixture } from '../src/agents/fixtures.js';
-import { replayRun, resolveArgs } from '../src/agents/replay.js';
+import { replayRun, resolveArgs, unmetDependency } from '../src/agents/replay.js';
 import { createToolRegistry } from '../src/agents/tools.js';
 import { RunEvent } from '../src/contracts/events.js';
 import { recordDecision } from '../src/sdk/gate.js';
@@ -68,5 +68,15 @@ describe('replay', () => {
     ).toEqual({ ticketId: 'tkt_1', n: 1 });
     expect(() => resolveArgs({ x: { $ref: 'steps.1.result.id' } }, results)).toThrow(/did not run/);
     expect(() => resolveArgs({ x: { $ref: 'nope.0' } }, results)).toThrow(/Bad \$ref/);
+  });
+
+  it('names the step a blocked call leaves without input, before that step starts', () => {
+    const ops = loadRunFixture('ops-agent');
+    const lookup = { order: { id: 'ord_1001' } };
+    // update_address (step 1) was blocked: create_ticket (step 2) builds on its result.
+    expect(unmetDependency(ops, 1, [lookup])).toBeNull();
+    expect(unmetDependency(ops, 2, [lookup, undefined])).toBe(
+      'Stopped before create_ticket: it uses the result of update_address, which did not run',
+    );
   });
 });

@@ -54,6 +54,9 @@ export async function replayRun(
   try {
     for (const [index, step] of fixture.steps.entries()) {
       if (opts.signal?.aborted) throw new Error('Run cancelled');
+      // A step built on a blocked or denied call cannot run; stop before it, not halfway in.
+      const stop = unmetDependency(fixture, index, results);
+      if (stop) throw new Error(stop);
       const { stepId, event: stepEvent } = await startStep(g, {
         runId,
         index,
@@ -83,6 +86,26 @@ export async function replayRun(
 }
 
 type ArgValue = RunFixture['steps'][number]['args'][string];
+
+/**
+ * Why step `index` cannot run, or null: one of its `$ref`s points at an earlier step that has no
+ * result because it was blocked by a policy or denied at the gate.
+ */
+export function unmetDependency(
+  fixture: RunFixture,
+  index: number,
+  results: unknown[],
+): string | null {
+  const step = fixture.steps[index];
+  for (const value of Object.values(step?.args ?? {})) {
+    if (value === null || typeof value !== 'object') continue;
+    const ref = Number(value.$ref.split('.')[1]);
+    if (ref < index && results[ref] === undefined) {
+      return `Stopped before ${step?.tool}: it uses the result of ${fixture.steps[ref]?.tool}, which did not run`;
+    }
+  }
+  return null;
+}
 
 /**
  * Resolve `{ "$ref": "steps.2.result.announcement" }` against earlier step results. A reference

@@ -9,6 +9,7 @@ import type {
   AgentId,
   Explain,
   GraphSnapshot,
+  Policy,
   RehearsalDiff,
   RunEvent,
   RunMode,
@@ -31,6 +32,7 @@ import {
   type AlgoResponse,
   type ApiClient,
   createApiClient,
+  type PolicyRequest,
   type UndoRequest,
 } from '@/lib/api';
 import { initialSession, type SessionState, sessionReducer } from '@/lib/session';
@@ -75,6 +77,8 @@ interface BacktrackActions {
   retry(): void;
   /** One of FalkorDB's algorithms over DEPENDS_ON (Q8–Q11), with the Cypher and ms behind it. */
   algo(request: AlgoRequest): Promise<AlgoResponse>;
+  /** Records a "never again" rule the gate checks (Q5) before every later call; null after a toasted error. */
+  setPolicy(request: PolicyRequest): Promise<Policy | null>;
 }
 
 interface BacktrackMeta {
@@ -320,6 +324,18 @@ export function BacktrackProvider({
       algo(request) {
         if (!client) return Promise.reject(new Error('Not connected yet.'));
         return client.algo(request);
+      },
+      async setPolicy(request) {
+        if (!client) return null;
+        try {
+          const policy = await client.policy(request);
+          // The rule is a node with SET / ON_TOOL / APPLIES_TO edges; show it in the graph.
+          void refresh(client);
+          return policy;
+        } catch (error) {
+          toast.error(messageOf(error));
+          return null;
+        }
       },
     }),
     [client, consume, refresh, askUndo],

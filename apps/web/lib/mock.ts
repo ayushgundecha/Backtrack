@@ -458,9 +458,14 @@ class MockEngine {
       .sort((a, b) => a.record.seq - b.record.seq);
   }
 
-  blockingPolicy(tool: string, agentId: string): Policy | undefined {
+  /** Q5 for blocks: this tool (or any tool on a scoped entity), this agent, a touched entity. */
+  blockingPolicy(tool: string, agentId: string, touched: string[]): Policy | undefined {
     return this.state.policies.find(
-      (p) => p.kind === 'block' && p.tool === tool && (p.agentId === null || p.agentId === agentId),
+      (p) =>
+        p.kind === 'block' &&
+        (p.tool === tool || (p.tool === null && p.entity !== null)) &&
+        (p.agentId === null || p.agentId === agentId) &&
+        (p.entity === null || touched.includes(`${p.entity.type}:${p.entity.key}`)),
     );
   }
 
@@ -1216,6 +1221,16 @@ export class MockApiClient implements ApiClient {
     for (const [index, step] of fixture.steps.entries()) {
       await sleep(this.stepDelayMs, signal);
       if (engine !== this.engine) return;
+      // As in core's replay: a step built on a blocked or denied call stops the run before it.
+      const unmet = Object.values(step.args)
+        .map((v) => (v !== null && typeof v === 'object' ? Number(v.$ref.split('.')[1]) : -1))
+        .find((ref) => ref >= 0 && ref < index && results[ref] === null);
+      if (unmet !== undefined) {
+        yield* fail(
+          `Stopped before ${step.tool}: it uses the result of ${fixture.steps[unmet]?.tool}, which did not run`,
+        );
+        return;
+      }
       const stepId = engine.id('stp');
       yield event({
         type: 'step',
@@ -1251,10 +1266,27 @@ export class MockApiClient implements ApiClient {
       };
 
       // Q5: a "never again" policy blocks the call before it touches the world.
-      const policy = engine.blockingPolicy(step.tool, agent);
+      const touched = [...output.reads, ...output.writes.map((w) => w.entity)].map(
+        (e) => `${e.type}:${e.key}`,
+      );
+      const policy = engine.blockingPolicy(step.tool, agent, touched);
       if (policy) {
-        const { entry } = engine.record({ ...base, status: 'blocked', output: null });
+        // Like runTool: the call is recorded with what it read, and nothing it would have written.
+        const { entry, effects } = engine.record({
+          ...base,
+          status: 'blocked',
+          output: { result: {}, reads: output.reads, writes: [] },
+        });
         engine.state.blocked.push({ policyId: policy.id, actionId: entry.record.id });
+        yield event({
+          type: 'action.recorded',
+          runId: run.id,
+          action: structuredClone(entry.record),
+          effects,
+          reads: entry.reads,
+          dependsOn: entry.dependsOn.map((d) => d.actionId),
+          trace: { cypher: CYPHER.record, ms: mockMs(entry.record.seq), rows: 1 },
+        });
         yield event({
           type: 'action.blocked',
           runId: run.id,

@@ -7,6 +7,7 @@ import {
   CircleDot,
   FlaskConical,
   Minus,
+  ShieldBan,
   TriangleAlert,
   Undo2,
   Users,
@@ -15,8 +16,9 @@ import {
 import { useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { agentName } from '@/lib/tools';
-import { executionCounts, planPhase, planStepStates, type StepState } from '@/lib/undo';
+import { executionCounts, planPhase, planStepStates, rootStep, type StepState } from '@/lib/undo';
 import { useBacktrack } from './BacktrackProvider';
+import { NeverAgainForm } from './NeverAgain';
 import { StatusBadge } from './StatusBadge';
 
 /** Icon for a step before it runs: ↩ revert, ⚠ irreversible (gets a mitigation), else neutral. */
@@ -145,6 +147,7 @@ export function PlanCard({ plan }: { plan: UndoPlan }) {
   const [diff, setDiff] = useState<RehearsalDiff | null>(null);
   const [rehearsing, setRehearsing] = useState(false);
   const [showPaths, setShowPaths] = useState(false);
+  const [neverAgain, setNeverAgain] = useState(false);
   const section = useRef<HTMLElement>(null);
   const rehearsal = diff?.planId === plan.id ? diff : null;
 
@@ -153,6 +156,7 @@ export function PlanCard({ plan }: { plan: UndoPlan }) {
   const phase = planPhase(plan, execution, rehearsal !== null);
   const counts = executionCounts(states);
   const started = phase !== 'proposed' && phase !== 'rehearsed';
+  const finished = started && phase !== 'executing';
   const busy = state.streaming || rehearsing;
   const viaOf = new Map(plan.steps.map((s) => [s.actionId, s.via]));
   const { blast } = plan;
@@ -165,6 +169,9 @@ export function PlanCard({ plan }: { plan: UndoPlan }) {
   useEffect(() => {
     if (rehearsal) reveal(section.current, '[aria-label="Rehearsal diff"]');
   }, [rehearsal]);
+  useEffect(() => {
+    if (neverAgain) reveal(section.current, '[aria-label="Never again policy"]');
+  }, [neverAgain]);
 
   const rehearse = async () => {
     setRehearsing(true);
@@ -272,15 +279,34 @@ export function PlanCard({ plan }: { plan: UndoPlan }) {
 
       {rehearsal ? <DiffCard diff={rehearsal} /> : null}
 
+      {finished && neverAgain ? (
+        <NeverAgainForm plan={plan} onClose={() => setNeverAgain(false)} />
+      ) : null}
+
       {/* Sticky so Rehearse and Confirm (then the progress line) stay in view however long the plan. */}
       <div className="sticky -bottom-3 -mx-3 -mb-3 flex min-h-15 flex-wrap items-center gap-2 border-t bg-surface px-3 py-3">
         {started ? (
-          <p className="flex items-center gap-2 text-sm" aria-live="polite">
-            <StatusBadge status={phase} />
-            {phase === 'executing'
-              ? `${counts.finished} of ${plan.steps.length} steps done`
-              : `${counts.reverted} reverted, ${counts.mitigated} mitigated, ${counts.conflict} in conflict, ${counts.skipped} skipped`}
-          </p>
+          <>
+            <p className="flex items-center gap-2 text-sm" aria-live="polite">
+              <StatusBadge status={phase} />
+              {phase === 'executing'
+                ? `${counts.finished} of ${plan.steps.length} steps done`
+                : `${counts.reverted} reverted, ${counts.mitigated} mitigated, ${counts.conflict} in conflict, ${counts.skipped} skipped`}
+            </p>
+            {finished && rootStep(plan) ? (
+              <Button
+                type="button"
+                variant="secondary"
+                className="ml-auto"
+                aria-expanded={neverAgain}
+                onClick={() => setNeverAgain(true)}
+                disabled={neverAgain}
+              >
+                <ShieldBan aria-hidden />
+                Never again
+              </Button>
+            ) : null}
+          </>
         ) : (
           <>
             <Button type="button" size="lg" variant="secondary" disabled={busy} onClick={rehearse}>

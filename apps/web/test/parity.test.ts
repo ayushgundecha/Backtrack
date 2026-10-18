@@ -14,6 +14,7 @@ import * as approval from '@/app/api/approval/route';
 import * as explain from '@/app/api/explain/route';
 import * as graph from '@/app/api/graph/route';
 import * as plan from '@/app/api/plan/route';
+import * as policy from '@/app/api/policy/route';
 import * as rehearse from '@/app/api/rehearse/route';
 import * as reset from '@/app/api/reset/route';
 import * as undoExecute from '@/app/api/undo/execute/route';
@@ -21,6 +22,7 @@ import * as undo from '@/app/api/undo/route';
 import * as world from '@/app/api/world/route';
 import { type ApiClient, HttpApiClient } from '@/lib/api';
 import { MockApiClient } from '@/lib/mock';
+import { defaultRule, neverAgainRequest, rootStep } from '@/lib/undo';
 
 const TENANT = `${process.env.BT_TEST_TENANT ?? 'test'}-parity`;
 const TOKEN = 'test-reset-token';
@@ -33,6 +35,7 @@ const ROUTES: Record<string, { GET?: Handler; POST?: Handler }> = {
   '/api/explain': explain,
   '/api/graph': graph,
   '/api/plan': plan,
+  '/api/policy': policy,
   '/api/rehearse': rehearse,
   '/api/reset': reset,
   '/api/undo': undo,
@@ -173,6 +176,22 @@ async function demo(client: ApiClient) {
   beats.undone = graphView(undone);
   beats.worldAfter = worldView(await client.world());
   beats.recall = outcomeView(await client.undo({ text: 'undo the address change' }), name);
+
+  // "Never again" from the executed plan, as the plan card records it, stops the same move next run.
+  const root = rootStep(proposal.plan);
+  if (!root) throw new Error('plan has no root step');
+  const rule = await client.policy(neverAgainRequest(proposal.plan, root, defaultRule(root), true));
+  beats.policy = { ...rule, id: '<policy>', ts: '<ts>', createdFromPlanId: '<plan>' };
+  const rerun = await drain(client, client.runAgent({ agent: 'ops-agent', mode: 'replay' }));
+  beats.rerun = rerun.map((e) =>
+    e.type === 'action.blocked'
+      ? `blocked ${e.tool}: ${e.rule}`
+      : e.type === 'action.recorded'
+        ? `recorded ${e.action.tool} ${e.action.status}`
+        : e.type === 'error'
+          ? `error ${e.message}`
+          : e.type,
+  );
   return JSON.parse(JSON.stringify(beats, (k, v) => (k === 'planId' ? '<plan>' : v)));
 }
 

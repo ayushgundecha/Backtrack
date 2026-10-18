@@ -3,7 +3,8 @@
  * to a text field, and how undo.step events map onto the plan's checklist. Framework-free so it is
  * unit-tested; the components only render what these return.
  */
-import type { GraphSnapshot, UndoOutcome, UndoPlan } from '@backtrack/core/contracts';
+import type { GraphSnapshot, UndoOutcome, UndoPlan, UndoStep } from '@backtrack/core/contracts';
+import type { PolicyRequest } from './api';
 import type { UndoExecutionView } from './session';
 
 export interface UndoTarget {
@@ -153,4 +154,34 @@ export function planFollowsDepth(
   if (plan.depth === depth || plan.status !== 'proposed') return null;
   if (execution?.planId === plan.id) return null;
   return plan.rootActionId;
+}
+
+/** The step that undid the plan's root action; its tool, agent and entity scope "never again". */
+export function rootStep(plan: UndoPlan): UndoStep | null {
+  return plan.steps.find((s) => s.actionId === plan.rootActionId) ?? null;
+}
+
+/** The rule a person starts from, e.g. "never update_address on ord_1001 again". */
+export function defaultRule(root: UndoStep): string {
+  return `never ${root.tool}${root.entity ? ` on ${root.entity.key}` : ''} again`;
+}
+
+/**
+ * The block policy "never again" records: exactly the move the plan undid (root tool and agent),
+ * narrowed to the root's entity when asked, and linked to the plan it came from.
+ */
+export function neverAgainRequest(
+  plan: UndoPlan,
+  root: UndoStep,
+  rule: string,
+  onEntity: boolean,
+): PolicyRequest {
+  return {
+    rule,
+    kind: 'block',
+    tool: root.tool,
+    agentId: root.agentId,
+    entity: onEntity && root.entity ? { type: root.entity.type, key: root.entity.key } : null,
+    createdFromPlanId: plan.id,
+  };
 }
