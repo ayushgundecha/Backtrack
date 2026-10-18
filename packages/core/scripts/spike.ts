@@ -94,6 +94,18 @@ log(
     )
   ).rows,
 );
+// Betweenness samples its source nodes unless told otherwise: repeat it and count the distinct
+// answers, with and without an explicit sample and seed (Q9 pins both).
+for (const opts of ['', ', samplingSize: 10000, samplingSeed: 7']) {
+  const seen = new Set<string>();
+  for (let i = 0; i < 20; i++) {
+    const { rows } = await g.read<{ id: string; score: number }>(
+      `CALL algo.betweenness({nodeLabels: ['Action'], relationshipTypes: ['DEPENDS_ON']${opts}}) YIELD node, score RETURN node.id AS id, score ORDER BY id`,
+    );
+    seen.add(JSON.stringify(rows));
+  }
+  log(`algo.betweenness x20${opts || ' (default sampling)'}: distinct answers`, [...seen]);
+}
 log(
   'algo.SPpaths a3 -> a1 (incoming over DEPENDS_ON, weight)',
   (

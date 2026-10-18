@@ -395,7 +395,8 @@ LIMIT $limit
 *answers:* which actions sit on the most dependency paths between other actions, so that undoing them splits the history?
 
 ```cypher
-CALL algo.betweenness({nodeLabels: ['Action'], relationshipTypes: ['DEPENDS_ON']}) YIELD node, score
+CALL algo.betweenness({nodeLabels: ['Action'], relationshipTypes: ['DEPENDS_ON'],
+  samplingSize: 10000, samplingSeed: 7}) YIELD node, score
 WITH node, score WHERE node.kind = 'do'
 OPTIONAL MATCH (ag:Agent)-[:RAN]->(:Run)-[:HAS]->(:Step)-[:DID]->(node)
 RETURN node.id AS id, node.tool AS tool, node.seq AS seq, node.status AS status, ag.id AS agentId, score

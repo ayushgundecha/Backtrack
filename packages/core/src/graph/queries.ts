@@ -1019,7 +1019,11 @@ export const q9Hinges = define<{ limit: number }, AlgoActionRow>({
   answers:
     'which actions sit on the most dependency paths between other actions, so that undoing them splits the history?',
   mode: 'read',
-  text: `CALL algo.betweenness({nodeLabels: ['Action'], relationshipTypes: ['DEPENDS_ON']}) YIELD node, score
+  // Betweenness samples source nodes by default, so the same graph can rank differently from
+  // call to call (spike-results.md). A sample far larger than any history, with a fixed seed,
+  // makes the ranking repeatable: the hinge a person is shown does not change on refresh.
+  text: `CALL algo.betweenness({nodeLabels: ['Action'], relationshipTypes: ['DEPENDS_ON'],
+  samplingSize: 10000, samplingSeed: 7}) YIELD node, score
 WITH node, score WHERE node.kind = 'do'
 OPTIONAL MATCH (ag:Agent)-[:RAN]->(:Run)-[:HAS]->(:Step)-[:DID]->(node)
 RETURN node.id AS id, node.tool AS tool, node.seq AS seq, node.status AS status, ag.id AS agentId, score

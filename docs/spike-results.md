@@ -11,6 +11,7 @@ Run with `pnpm spike` (creates and drops graph `bt:spike`). Verified on `falkord
 | `algo.wcc({nodeLabels, relationshipTypes}) YIELD node, componentId` | works | Q10 independent clusters |
 | `algo.pageRank('Action','DEPENDS_ON') YIELD node, score` | works, positional string args | Q8 load-bearing actions |
 | `algo.betweenness({nodeLabels, relationshipTypes}) YIELD node, score` | works; a2 (the middle) scores 1 | Q9 hinge actions |
+| `algo.betweenness` repeated on the 9-action golden graph | **sampled by default**: the same graph scored post_message/create_ticket 8/4 on 18 of 25 runs and 10/5 on 7, and in a full test run the two swapped places once; with `samplingSize: 10000, samplingSeed: 7` all 25 runs gave 12/6 | Q9 passes an explicit sample size and seed so the hinge ranking is repeatable |
 | `algo.SPpaths({sourceNode, targetNode, relTypes, weightProp, relDirection, pathCount}) YIELD path, pathWeight` | works; `weightProp` is required so every `DEPENDS_ON` carries `weight: 1` | Q11 path between two actions |
 | Pattern predicate in `WHERE (a)-[:DEPENDS_ON]->(:Action {id:…})` | works | Q5 uses pattern predicates; `EXISTS {}` is not used |
 | Counting relationships | bind and reference the relationship (`WHERE ID(e) >= 0`) | all counting queries bind their relationships |
