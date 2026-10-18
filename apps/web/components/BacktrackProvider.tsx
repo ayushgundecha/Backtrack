@@ -26,7 +26,13 @@ import {
   useState,
 } from 'react';
 import { toast } from 'sonner';
-import { type ApiClient, createApiClient, type UndoRequest } from '@/lib/api';
+import {
+  type AlgoRequest,
+  type AlgoResponse,
+  type ApiClient,
+  createApiClient,
+  type UndoRequest,
+} from '@/lib/api';
 import { initialSession, type SessionState, sessionReducer } from '@/lib/session';
 
 type Connection = 'connecting' | 'ok' | 'error';
@@ -67,6 +73,8 @@ interface BacktrackActions {
   worldAt(asOfSeq: number): Promise<WorldSnapshot>;
   /** Reads graph and world again, e.g. from an error state's Retry button. */
   retry(): void;
+  /** One of FalkorDB's algorithms over DEPENDS_ON (Q8–Q11), with the Cypher and ms behind it. */
+  algo(request: AlgoRequest): Promise<AlgoResponse>;
 }
 
 interface BacktrackMeta {
@@ -308,6 +316,10 @@ export function BacktrackProvider({
         if (!client) return;
         setConnection('connecting');
         void refresh(client);
+      },
+      algo(request) {
+        if (!client) return Promise.reject(new Error('Not connected yet.'));
+        return client.algo(request);
       },
     }),
     [client, consume, refresh, askUndo],

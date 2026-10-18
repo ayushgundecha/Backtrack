@@ -129,7 +129,10 @@ const fitPadding = (width: number) => Math.min(FIT_PADDING, Math.round(width / 9
 
 export interface ForceCanvasProps {
   graph: ViewGraph;
-  closure: Closure | null;
+  /** What is lit: a selection's closure, or an algorithm's result (only lit and litLinks). */
+  closure: Pick<Closure, 'lit' | 'litLinks'> | null;
+  /** Labels drawn beside nodes for an algorithm result: #1 ranks, C1 clusters, path steps. */
+  badges?: Map<string, string>;
   selectedId: string | null;
   /** Node ids dimmed whatever is lit: recorded after the time scrubber's position. */
   faded?: Set<string>;
@@ -143,6 +146,7 @@ export interface ForceCanvasProps {
 export default function ForceCanvas({
   graph,
   closure,
+  badges,
   selectedId,
   faded,
   reducedMotion,
@@ -363,9 +367,11 @@ export default function ForceCanvas({
           palette.mono,
         );
       }
+      const badge = badges?.get(node.id);
+      if (badge) paintBadge(ctx, badge, x + r + 2, y - r - 2, scale, palette);
       ctx.globalAlpha = 1;
     },
-    [isLit, lit, palette, selectedId, reducedMotion, data.nodes.length],
+    [isLit, lit, palette, selectedId, reducedMotion, data.nodes.length, badges],
   );
 
   const paintPointer = useCallback((node: Node, color: string, ctx: CanvasRenderingContext2D) => {
@@ -534,6 +540,35 @@ export default function ForceCanvas({
       ) : null}
     </div>
   );
+}
+
+/**
+ * An algorithm's label for a node (#1, C2, 3): accent text on a surface pill, up and right of the
+ * circle, at a constant 10 px whatever the zoom. Text, not color, carries the rank.
+ */
+function paintBadge(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  x: number,
+  y: number,
+  scale: number,
+  palette: Palette,
+) {
+  const size = 10 / scale;
+  ctx.font = `500 ${size}px ${palette.mono}`;
+  const width = ctx.measureText(text).width + 6 / scale;
+  const height = size + 4 / scale;
+  ctx.beginPath();
+  ctx.roundRect(x, y - height, width, height, 3 / scale);
+  ctx.fillStyle = palette.surface2;
+  ctx.fill();
+  ctx.lineWidth = 1 / scale;
+  ctx.strokeStyle = palette.accent;
+  ctx.stroke();
+  ctx.fillStyle = palette.fg;
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(text, x + 3 / scale, y - height / 2);
 }
 
 /** Text at a constant on-screen size (11 px) whatever the zoom. */

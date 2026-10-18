@@ -88,20 +88,31 @@ OPTIONAL MATCH (a)-[:READ]->(e:Entity)<-[:ON]-(:Effect)<-[:CAUSED]-(w:Action)
 WHERE w.seq < a.seq AND w.status = 'done'
 WITH a, s, e, w ORDER BY w.seq DESC
 RETURN a, s.thought AS thought, e.type + ':' + e.key AS entity, collect(w)[0] AS writtenBy`,
-  pageRank: `// answers: which actions does the most work depend on? (Q8)
-CALL algo.pageRank('Action', 'DEPENDS_ON') YIELD node, score
-RETURN node.id AS actionId, node.tool AS tool, node.seq AS seq, score ORDER BY score DESC`,
-  betweenness: `// answers: which actions sit on the most dependency paths? (Q9)
-CALL algo.betweenness({nodeLabels: ['Action'], relationshipTypes: ['DEPENDS_ON']}) YIELD node, score
-RETURN node.id AS actionId, node.tool AS tool, node.seq AS seq, score ORDER BY score DESC`,
-  wcc: `// answers: which groups of actions are independent of each other? (Q10)
-CALL algo.wcc({nodeLabels: ['Action'], relationshipTypes: ['DEPENDS_ON']}) YIELD node, componentId
-RETURN node.id AS actionId, node.tool AS tool, node.seq AS seq, componentId ORDER BY componentId, seq`,
-  path: `// answers: how does one action depend on another? (Q11)
-MATCH (a:Action {id: $from}), (b:Action {id: $to})
-CALL algo.SPpaths({sourceNode: a, targetNode: b, relTypes: ['DEPENDS_ON'], weightProp: 'weight',
-  relDirection: 'outgoing', pathCount: 1, maxLen: 10}) YIELD path, pathWeight
-RETURN [n IN nodes(path) | n.id] AS path, pathWeight AS hops`,
+  // Q8–Q11 below are the catalogue's text (packages/core/src/graph/queries.ts), so the panel
+  // shows the same Cypher in both modes; the mock computes the rows itself.
+  pageRank: `CALL algo.pageRank('Action', 'DEPENDS_ON') YIELD node, score
+WITH node, score WHERE node.kind = 'do'
+OPTIONAL MATCH (ag:Agent)-[:RAN]->(:Run)-[:HAS]->(:Step)-[:DID]->(node)
+RETURN node.id AS id, node.tool AS tool, node.seq AS seq, node.status AS status, ag.id AS agentId, score
+ORDER BY score DESC, seq
+LIMIT $limit`,
+  betweenness: `CALL algo.betweenness({nodeLabels: ['Action'], relationshipTypes: ['DEPENDS_ON'],
+  samplingSize: 10000, samplingSeed: 7}) YIELD node, score
+WITH node, score WHERE node.kind = 'do'
+OPTIONAL MATCH (ag:Agent)-[:RAN]->(:Run)-[:HAS]->(:Step)-[:DID]->(node)
+RETURN node.id AS id, node.tool AS tool, node.seq AS seq, node.status AS status, ag.id AS agentId, score
+ORDER BY score DESC, seq
+LIMIT $limit`,
+  wcc: `CALL algo.wcc({nodeLabels: ['Action'], relationshipTypes: ['DEPENDS_ON']}) YIELD node, componentId
+WITH componentId, node ORDER BY node.seq
+WITH componentId, collect({id: node.id, tool: node.tool, seq: node.seq}) AS actions
+RETURN componentId, size(actions) AS size, actions
+ORDER BY size DESC, componentId`,
+  path: `MATCH (s:Action {id: $from}), (t:Action {id: $to})
+CALL algo.SPpaths({sourceNode: s, targetNode: t, relTypes: ['DEPENDS_ON'], weightProp: 'weight',
+  relDirection: 'incoming', pathCount: 1, maxLen: 10})
+YIELD path, pathWeight
+RETURN [n IN nodes(path) | n.id] AS ids, [n IN nodes(path) | n.tool] AS tools, pathWeight`,
 } as const;
 
 // ---------- State ----------
@@ -853,55 +864,80 @@ class MockEngine {
     return { action: null, candidates: pool.slice(0, 3).map(candidate) };
   }
 
-  /** Live, done `do` actions and their DEPENDS_ON edges: the subgraph the algorithms run on. */
+  /**
+   * Every action and every DEPENDS_ON edge: the procedures run over the whole Action label, as
+   * the real Q8–Q11 do; Q8 and Q9 then keep only `do` actions in their rows.
+   */
   private algoGraph(): { ids: string[]; edges: [string, string][] } {
-    const live = this.state.actions.filter(
-      (a) => a.record.kind === 'do' && a.record.status === 'done',
-    );
-    const ids = live.map((a) => a.record.id);
-    const edges = live.flatMap((a) =>
-      a.dependsOn
-        .filter((d) => ids.includes(d.actionId))
-        .map((d): [string, string] => [a.record.id, d.actionId]),
+    const ids = this.state.actions.map((a) => a.record.id);
+    const edges = this.state.actions.flatMap((a) =>
+      a.dependsOn.map((d): [string, string] => [a.record.id, d.actionId]),
     );
     return { ids, edges };
   }
 
+  /** Rows shaped like the real /api/algo (Q8–Q11), so the panel parses one shape in both modes. */
   algo(name: AlgoRequest['name'], from?: string, to?: string): AlgoResponse {
     const { ids, edges } = this.algoGraph();
-    const row = (id: string) => {
-      const a = this.action(id) as ActionEntry;
-      return { actionId: id, tool: a.record.tool, seq: a.record.seq };
-    };
+    const entry = (id: string) => this.action(id) as ActionEntry;
     const ms = mockMs(ids.length);
+    const ranked = (scores: Map<string, number>) =>
+      ids
+        .map(entry)
+        .filter((a) => a.record.kind === 'do')
+        .map((a) => ({
+          id: a.record.id,
+          tool: a.record.tool,
+          seq: a.record.seq,
+          status: a.record.status,
+          agentId: a.record.agentId,
+          score: round(scores.get(a.record.id) ?? 0),
+        }))
+        .sort((x, y) => y.score - x.score || x.seq - y.seq)
+        .slice(0, ALGO_LIMIT);
     switch (name) {
-      case 'load_bearing': {
-        const scores = pageRank(ids, edges);
-        const rows = ids.map((id) => ({ ...row(id), score: round(scores.get(id) ?? 0) }));
-        return { rows: rows.sort((a, b) => b.score - a.score), cypher: CYPHER.pageRank, ms };
-      }
-      case 'hinge_actions': {
-        const scores = betweenness(ids, edges);
-        const rows = ids.map((id) => ({ ...row(id), score: round(scores.get(id) ?? 0) }));
-        return { rows: rows.sort((a, b) => b.score - a.score), cypher: CYPHER.betweenness, ms };
-      }
+      case 'load_bearing':
+        return { rows: ranked(pageRank(ids, edges)), cypher: CYPHER.pageRank, ms };
+      case 'hinge_actions':
+        return { rows: ranked(betweenness(ids, edges)), cypher: CYPHER.betweenness, ms };
       case 'independent_clusters': {
         const component = components(ids, edges);
-        const rows = ids.map((id) => ({ ...row(id), componentId: component.get(id) ?? 0 }));
+        const groups = new Map<number, { id: string; tool: string; seq: number }[]>();
+        for (const id of ids) {
+          const { record } = entry(id);
+          const c = component.get(id) ?? 0;
+          groups.set(c, [...(groups.get(c) ?? []), { id, tool: record.tool, seq: record.seq }]);
+        }
+        const rows = [...groups]
+          .map(([componentId, actions]) => ({
+            componentId,
+            size: actions.length,
+            actions: actions.sort((x, y) => x.seq - y.seq),
+          }))
+          .sort((x, y) => y.size - x.size || x.componentId - y.componentId);
         return { rows, cypher: CYPHER.wcc, ms };
       }
       case 'path_between': {
         if (!from || !to)
-          throw new ApiError('path_between needs both "from" and "to"', 400, '/api/algo');
-        const path = shortestPath(edges, from, to);
+          throw new ApiError('path_between needs from and to action ids', 400, '/api/algo');
+        const path = from === to ? null : shortestPath(edges, from, to);
         const rows = path
-          ? [{ path, tools: path.map((id) => row(id).tool), hops: path.length - 1 }]
+          ? [
+              {
+                ids: path,
+                tools: path.map((id) => entry(id).record.tool),
+                pathWeight: path.length - 1,
+              },
+            ]
           : [];
         return { rows, cypher: CYPHER.path, ms };
       }
     }
   }
 }
+
+/** The routes ask Q8 and Q9 for their top 10. */
+const ALGO_LIMIT = 10;
 
 // ---------- Graph algorithms (mock stand-ins for FalkorDB's algo.* procedures) ----------
 
@@ -983,7 +1019,10 @@ function components(ids: string[], edges: [string, string][]) {
   );
 }
 
-/** Shortest path following DEPENDS_ON from `from` to `to` (outgoing), as action ids. */
+/**
+ * Shortest route from the earlier action `from` to the later `to`, walking DEPENDS_ON against
+ * its direction (SPpaths with relDirection 'incoming'), as action ids from `from` to `to`.
+ */
 function shortestPath(edges: [string, string][], from: string, to: string): string[] | null {
   const queue: string[][] = [[from]];
   const seen = new Set([from]);
@@ -991,10 +1030,11 @@ function shortestPath(edges: [string, string][], from: string, to: string): stri
     const path = queue.shift() as string[];
     const last = path[path.length - 1];
     if (last === to) return path;
-    for (const [s, t] of edges) {
-      if (s === last && !seen.has(t)) {
-        seen.add(t);
-        queue.push([...path, t]);
+    if (path.length > 10) continue;
+    for (const [dependent, dependency] of edges) {
+      if (dependency === last && !seen.has(dependent)) {
+        seen.add(dependent);
+        queue.push([...path, dependent]);
       }
     }
   }

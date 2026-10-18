@@ -9,12 +9,13 @@
 import type { GraphSnapshot } from '@backtrack/core/contracts';
 import { Info, Play } from 'lucide-react';
 import dynamic from 'next/dynamic';
-import { useCallback, useMemo } from 'react';
+import { useCallback, useEffect, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { stepSelection, toViewGraph, type ViewNode } from '@/lib/graph-model';
 import { laterNodes } from '@/lib/time-travel';
 import { agentName } from '@/lib/tools';
 import { useReducedMotion } from '@/lib/use-reduced-motion';
+import { AlgoPanel, useAlgo } from './AlgoPanel';
 import { useBacktrack } from './BacktrackProvider';
 import { BlastChip } from './BlastChip';
 import { EmptyState, ErrorState } from './EmptyState';
@@ -67,6 +68,13 @@ export function GraphView() {
     () => (graph ? laterNodes(graph, time.asOfSeq, time.frame) : new Set<string>()),
     [graph, time.asOfSeq, time.frame],
   );
+  // Algorithm answers (BT-04B). The graph shows one answer at a time, so asking clears the
+  // selection; selecting an action afterwards clears the answer (see `choose`).
+  const algo = useAlgo(graph, selection.selectedId);
+  const { select } = selection;
+  useEffect(() => {
+    if (algo.mode) select(null);
+  }, [algo.mode, select]);
 
   // Args are not in the snapshot; the run stream carried them in action.recorded.
   const argsById = useMemo(() => {
@@ -148,6 +156,7 @@ export function GraphView() {
     const step = keys[event.key];
     if (step) {
       event.preventDefault();
+      if (algo.mode) algo.clear();
       selection.select(stepSelection(graph, selection.selectedId, step));
     } else if (event.key === 'Enter' && selection.selectedId) {
       event.preventDefault();
@@ -157,6 +166,23 @@ export function GraphView() {
       selection.select(null);
     }
   };
+
+  // A canvas click picks a path end while "Path between" waits for one; otherwise it selects.
+  const choose = (actionId: string | null) => {
+    if (algo.picking) {
+      if (actionId) algo.pick(actionId);
+      return;
+    }
+    if (algo.mode) algo.clear();
+    selection.select(actionId);
+  };
+  const highlight = algo.overlay
+    ? algo.overlay.lit
+      ? { lit: algo.overlay.lit, litLinks: algo.overlay.litLinks }
+      : null
+    : closure && closure.rootId === selection.selectedId
+      ? closure
+      : null;
 
   const announcement =
     root && closure && closure.rootId === root.id
@@ -179,12 +205,14 @@ export function GraphView() {
             Explain
           </Button>
         </BlastChip>
-      ) : (
+      ) : algo.mode ? null : (
         <p className="rounded-lg border border-dashed px-3 py-2.5 text-fg-muted text-sm">
           Click an action to light up everything that depends on it. With the graph focused, the
           arrow keys step through actions in seq order.
         </p>
       )}
+
+      <AlgoPanel algo={algo} graph={graph} />
 
       {/*
         The canvas is not readable by assistive tech, so the same actions are a listbox of hidden
@@ -221,12 +249,13 @@ export function GraphView() {
         ))}
         <ForceCanvas
           graph={view}
-          closure={closure && closure.rootId === selection.selectedId ? closure : null}
+          closure={highlight}
+          badges={algo.overlay?.badges}
           selectedId={selection.selectedId}
           faded={faded}
           reducedMotion={reducedMotion}
           agentLabels={agentName}
-          onSelect={selection.select}
+          onSelect={choose}
           describe={describe}
         />
       </div>
