@@ -99,7 +99,7 @@ export function StepCard({
             {ended ? 'No tool call was recorded for this step.' : 'Waiting for the tool call…'}
           </p>
         )}
-        {action ? (
+        {action && action.result !== null ? (
           <p className="line-clamp-2 text-fg-muted text-sm">{resultLine(action.result)}</p>
         ) : null}
         {dependsOn.length > 0 ? (

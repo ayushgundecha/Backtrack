@@ -259,6 +259,7 @@ export default function ForceCanvas({
   const [size, setSize] = useState({ width: 0, height: 0 });
   const [palette, setPalette] = useState<Palette>(FALLBACK);
   const [hover, setHover] = useState<{ node: Node; x: number; y: number } | null>(null);
+  const hoverOpen = useRef(false);
   // Once the user pans or zooms, the camera is theirs until they ask for the fit back.
   const [moved, setMoved] = useState(false);
   const movedRef = useRef(false);
@@ -821,11 +822,18 @@ export default function ForceCanvas({
           }}
           onBackgroundClick={() => onSelect(null)}
           onNodeHover={(node) => {
+            hoverOpen.current = Boolean(node && fg.current);
             if (!node || !fg.current) return setHover(null);
             const p = fg.current.graph2ScreenCoords(node.x ?? 0, node.y ?? 0);
             setHover({ node, x: p.x, y: p.y });
           }}
-          onZoom={() => setHover(null)}
+          // ForceGraph2D reports zoom while it renders (zoomToFit); only touch state when a
+          // tooltip is actually open, or React warns about updating ForceCanvas mid-render.
+          onZoom={() => {
+            if (!hoverOpen.current) return;
+            hoverOpen.current = false;
+            setHover(null);
+          }}
           minZoom={MIN_ZOOM}
           maxZoom={6}
         />

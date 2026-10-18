@@ -92,7 +92,17 @@ export function RunStream() {
   const recorded = state.graph?.nodes.filter((n) => n.label === 'Action').length ?? 0;
   const run = latestRun(session);
   const waiting = pendingApproval(session);
-  const actions = useMemo(() => recordedActions(session), [session]);
+  // Actions recorded in this session, plus any older one in the graph a new step depends on
+  // (an earlier run, the CLI), so "Depends on" always names a tool and seq, never a bare id.
+  const actions = useMemo(() => {
+    const known = recordedActions(session);
+    for (const n of state.graph?.nodes ?? []) {
+      if (n.label === 'Action' && n.tool && n.seq !== undefined && !known.has(n.id)) {
+        known.set(n.id, { tool: n.tool, seq: n.seq });
+      }
+    }
+    return known;
+  }, [session, state.graph]);
   // One polite announcement for screen readers instead of making every card a live region.
   const announcement = waiting
     ? `Approval needed for ${waiting.tool}`
