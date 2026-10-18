@@ -48,18 +48,6 @@ const stateOf = (w: WorldSnapshot) =>
       .sort(([a], [b]) => a.localeCompare(b)),
   );
 
-// The mock's tools word their prose differently from the real ones (ticket body, message text,
-// email body, event title); across engines only that wording is set aside, never a value the
-// fold puts back. Within one engine frames are compared whole.
-const PROSE = new Set(['body', 'text', 'title']);
-const withoutProse = (w: WorldSnapshot) =>
-  Object.fromEntries(
-    Object.entries(stateOf(w)).map(([id, state]) => [
-      id,
-      Object.fromEntries(Object.entries(state).filter(([field]) => !PROSE.has(field))),
-    ]),
-  );
-
 /**
  * Records the golden history and keeps the live world after every action, by seq. The live read
  * after an action.recorded event is what the panel showed at that moment.
@@ -106,13 +94,13 @@ describe('time scrubber frames', () => {
       const frame = await real.world(seq);
       expect(frame.asOfSeq).toBe(seq);
       const mockFrame = await mock.world(seq);
-      expect(withoutProse(frame), `asOfSeq=${seq}`).toEqual(withoutProse(mockFrame));
+      expect(stateOf(frame), `asOfSeq=${seq}`).toEqual(stateOf(mockFrame));
       // A done action's frame is the world exactly as it was live right after it, in both.
       const live = onGraph.liveAfter.get(seq);
       if (live) expect(stateOf(frame), `FalkorDB live after seq ${seq}`).toEqual(live);
       const mockLive = inMock.liveAfter.get(seq);
       if (mockLive) expect(stateOf(mockFrame), `mock live after seq ${seq}`).toEqual(mockLive);
     }
-    expect(withoutProse(await real.world())).toEqual(withoutProse(await mock.world()));
+    expect(stateOf(await real.world())).toEqual(stateOf(await mock.world()));
   }, 60_000);
 });
