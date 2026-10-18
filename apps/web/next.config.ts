@@ -1,6 +1,7 @@
 import type { NextConfig } from 'next';
 
 const nextConfig: NextConfig = {
+  agentRules: false, // keep the hand-written root AGENTS.md; do not generate apps/web/AGENTS.md
   // The FalkorDB client opens TCP sockets; keep it out of the bundle and require it from
   // node_modules at runtime in the Node route handlers. It is also a direct dependency of the
   // app because Next only externalizes packages it can resolve from here; bundled, its Temporal
