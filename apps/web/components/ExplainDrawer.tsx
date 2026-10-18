@@ -351,6 +351,8 @@ function ExplainBody({ explain }: { explain: Explain }) {
               </span>
               <PathChips path={path.member.path} />
             </>
+          ) : path.kind === 'no-plan' ? (
+            <p className="text-fg-muted">{path.note}</p>
           ) : (
             <div className="flex flex-wrap items-center gap-2">
               <p className="text-fg-muted">

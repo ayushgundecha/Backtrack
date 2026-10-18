@@ -12,6 +12,7 @@ import {
   isEditableTarget,
   isUndoShortcut,
   lastUndoableAction,
+  planFollowsDepth,
   planPhase,
   planStepStates,
 } from '../lib/undo';
@@ -86,10 +87,14 @@ describe('⌘Z', () => {
 describe('undo outcomes', () => {
   it('returns plan, none, unknown and memory for the requests the console sends', async () => {
     const client = await goldenClient();
-    expect((await client.undo({ text: 'undo the thing from yesterday' })).kind).toBe('unknown');
+    expect((await client.undo({ text: 'undo the weather' })).kind).toBe('unknown');
     const last = lastUndoableAction(await client.graph());
     if (!last) throw new Error('expected an action');
-    expect((await client.undo({ actionId: last.actionId })).kind).toBe('none');
+    // Nothing depends on the latest change, so its plan is that one step (as the engine plans it).
+    const leaf = await client.undo({ actionId: last.actionId });
+    expect(leaf.kind === 'plan' && leaf.plan.steps.map((s) => s.tool)).toEqual(['apply_credit']);
+    const lookups = (await client.actions()).actions.filter((a) => a.tool === 'lookup_order');
+    expect((await client.undo({ actionId: lookups[0]?.id })).kind).toBe('none');
 
     const plan = await planFor(client, 'undo the address change');
     for await (const _ of client.executeUndo(plan.id)) {
@@ -154,5 +159,27 @@ describe('plan checklist', () => {
     });
     expect(planStepStates(plan, other.undo).get(1)).toBe('queued');
     expect(planPhase(plan, other.undo, false)).toBe('proposed');
+  });
+});
+
+describe('one depth for the panel', () => {
+  it('re-plans a proposal when the slider moves, and leaves executed plans alone', async () => {
+    const client = await goldenClient();
+    const outcome = await client.undo({ text: 'undo the address change', depth: 1 });
+    if (outcome.kind !== 'plan') throw new Error('expected a plan');
+    const root = outcome.plan.rootActionId;
+    expect(planFollowsDepth(outcome, 1, null)).toBeNull();
+    expect(planFollowsDepth(outcome, 3, null)).toBe(root);
+
+    // Asking at the new depth answers the plan for that depth, which then stops following.
+    const wider = await client.undo({ actionId: root, depth: 3 });
+    expect(wider.kind === 'plan' && wider.plan.steps.map((s) => s.tool)).toContain('apply_credit');
+    expect(planFollowsDepth(wider, 3, null)).toBeNull();
+
+    // Once confirmed, the card records what ran at its own depth.
+    let session: SessionState = initialSession;
+    for await (const e of client.executeUndo(outcome.plan.id)) session = sessionReducer(session, e);
+    expect(planFollowsDepth(outcome, 3, session.undo)).toBeNull();
+    expect(planFollowsDepth({ kind: 'none', actionId: root, reason: 'r' }, 3, null)).toBeNull();
   });
 });

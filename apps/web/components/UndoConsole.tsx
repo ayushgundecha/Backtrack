@@ -9,13 +9,17 @@ import { Button } from '@/components/ui/button';
  * a memory of an earlier undo, nothing to undo, or no matching action with the closest candidates.
  */
 import type { UndoRequest } from '@/lib/api';
-import { isEditableTarget, isUndoShortcut, lastUndoableAction, type UndoTarget } from '@/lib/undo';
+import {
+  isEditableTarget,
+  isUndoShortcut,
+  lastUndoableAction,
+  planFollowsDepth,
+  type UndoTarget,
+} from '@/lib/undo';
 import { useBacktrack } from './BacktrackProvider';
 import { PlanCard } from './PlanCard';
+import { useSelection } from './SelectionProvider';
 import { MemoryCard, NoneCard, UnknownCard } from './UndoOutcomes';
-
-/** The engine's default closure depth (api.undo body); the plan card can change it per plan. */
-const DEFAULT_DEPTH = 5;
 
 /** ⌘ on Apple platforms, Ctrl elsewhere; decided after mount so server and client HTML match. */
 function useShortcutLabel() {
@@ -28,6 +32,9 @@ function useShortcutLabel() {
 
 export function UndoConsole() {
   const { state, actions } = useBacktrack();
+  // One depth for the whole panel (PLAN §7.3): the blast chip's slider sets it, and every plan
+  // the console asks for uses it, so the plan card and the lit closure always agree.
+  const { depth, select } = useSelection();
   const [text, setText] = useState('');
   // Set by ⌘Z: while the text is exactly the prefill, the request names the action by id.
   const [target, setTarget] = useState<UndoTarget | null>(null);
@@ -67,9 +74,23 @@ export function UndoConsole() {
 
   const plan = async (request: UndoRequest) => {
     setPlanning(true);
-    await actions.requestUndo({ depth: DEFAULT_DEPTH, ...request });
+    const outcome = await actions.requestUndo({ ...request, depth });
     setPlanning(false);
+    // Select what the plan is about, so the graph lights its closure and the blast chip (with
+    // the depth slider) is there to widen it.
+    if (outcome && outcome.kind !== 'unknown') {
+      select(outcome.kind === 'plan' ? outcome.plan.rootActionId : outcome.actionId);
+    }
   };
+
+  // Moving the slider re-plans a plan that is still only a proposal at the new depth.
+  const outcome = state.undoOutcome;
+  const follow = planFollowsDepth(outcome, depth, state.session.undo);
+  const replan = useRef(actions.requestUndo);
+  replan.current = actions.requestUndo;
+  useEffect(() => {
+    if (follow) void replan.current({ actionId: follow, depth });
+  }, [follow, depth]);
 
   const submit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -78,7 +99,6 @@ export function UndoConsole() {
     void plan(target && text === target.text ? { actionId: target.actionId } : { text: words });
   };
 
-  const outcome = state.undoOutcome;
   // One short announcement per outcome; the plan card announces its own execution progress.
   const announcement = !outcome
     ? ''
@@ -132,11 +152,7 @@ export function UndoConsole() {
         {outcome ? (
           <div className="fade-in-0 relative animate-in overflow-y-auto rounded-lg border bg-surface p-3 duration-200 lg:max-h-[55dvh]">
             {outcome.kind === 'plan' ? (
-              <PlanCard
-                key={outcome.plan.id}
-                plan={outcome.plan}
-                onDepth={(depth) => void plan({ actionId: outcome.plan.rootActionId, depth })}
-              />
+              <PlanCard key={outcome.plan.id} plan={outcome.plan} />
             ) : outcome.kind === 'memory' ? (
               <MemoryCard outcome={outcome} />
             ) : outcome.kind === 'none' ? (

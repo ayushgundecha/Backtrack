@@ -197,13 +197,15 @@ export function closureFromOutcome(
   };
   if (outcome.kind === 'none') return { ...base, note: outcome.reason };
   if (outcome.kind === 'memory') {
-    const n = outcome.priorPlans.length;
+    // Q13 recalls every plan for the action, proposals that never ran included, so the note
+    // names the ones that executed instead of calling them all "earlier undos".
+    const ran = outcome.priorPlans.filter((p) => p.status === 'executed' || p.status === 'partial');
     return {
       ...base,
       note:
-        n > 0
-          ? `Already undone (${n} earlier ${n === 1 ? 'plan' : 'plans'}); nothing left to plan.`
-          : 'Already undone; nothing left to plan.',
+        ran.length > 0
+          ? `Already undone by ${ran.map((p) => p.id).join(', ')} (Q13); nothing left to plan.`
+          : 'Already undone (Q13); nothing left to plan.',
     };
   }
   if (outcome.kind === 'unknown') {

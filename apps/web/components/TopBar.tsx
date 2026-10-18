@@ -81,7 +81,6 @@ function ConnectionStatus() {
 export function TopBar() {
   const { state, actions, meta } = useBacktrack();
   const idle = meta.source !== null && !state.streaming;
-  const mock = meta.source === 'mock';
 
   return (
     <header className="flex h-14 shrink-0 items-center gap-2 border-b bg-surface px-3 sm:gap-4 sm:px-4">
@@ -101,27 +100,13 @@ export function TopBar() {
           disabled={!idle}
           onClick={() => actions.runAgent('ops-agent', 'replay')}
         />
-        {mock ? (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              {/* A disabled button gets no pointer or focus events, so the wrapper carries the tooltip. */}
-              {/* biome-ignore lint/a11y/noNoninteractiveTabindex: tooltip trigger must be focusable */}
-              <span tabIndex={0} className="rounded-lg">
-                <BarButton icon={Sparkles} label="Live LLM" disabled />
-              </span>
-            </TooltipTrigger>
-            <TooltipContent>
-              Live LLM runs need the real API; mock mode replays fixtures.
-            </TooltipContent>
-          </Tooltip>
-        ) : (
-          <BarButton
-            icon={Sparkles}
-            label="Live LLM"
-            disabled={!idle}
-            onClick={() => actions.runAgent('ops-agent', 'llm')}
-          />
-        )}
+        {/* Without an OpenRouter key (and in the mock) the server says so and shows the replay. */}
+        <BarButton
+          icon={Sparkles}
+          label="Live LLM"
+          disabled={!idle}
+          onClick={() => actions.runAgent('ops-agent', 'llm')}
+        />
         <BarButton
           icon={Receipt}
           label="Run billing agent"

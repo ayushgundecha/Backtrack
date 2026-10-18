@@ -54,7 +54,7 @@ export function SelectionProvider({ children }: { children: React.ReactNode }) {
 
   // Re-ask when an action is added or changes status (an undo turns its closure dashed), not on
   // every snapshot: each ask proposes a plan, so asking only when the answer can change.
-  const signature = useMemo(
+  const liveSignature = useMemo(
     () =>
       graph?.nodes
         .filter((n) => n.label === 'Action')
@@ -62,6 +62,11 @@ export function SelectionProvider({ children }: { children: React.ReactNode }) {
         .join(',') ?? '',
     [graph],
   );
+  // While a run or an undo streams, every step changes the answer; asking after each one would
+  // record a plan per step. The closure holds still until the stream ends, then asks once.
+  const settled = useRef(liveSignature);
+  if (!state.streaming) settled.current = liveSignature;
+  const signature = settled.current;
   const selectedExists =
     selectedId !== null && !!graph?.nodes.some((n) => n.id === selectedId && n.label === 'Action');
 

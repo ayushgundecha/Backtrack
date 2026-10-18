@@ -49,28 +49,41 @@ export const keyPrefix: Record<string, string> = {
   credit: 'cr',
 };
 
-export function displayOf(type: string, state: EntityState): string {
+/**
+ * What the world panel calls an entity, from its current state ("Rahul Mehta", "#ops message").
+ * Mirrors `titleOf` in packages/core/src/world/types.ts.
+ */
+export function worldTitle(type: string, state: EntityState): string {
+  const str = (v: unknown) => (typeof v === 'string' && v ? v : null);
   switch (type) {
     case 'customer':
-      return String(state.name);
+      return str(state.name) ?? refDisplay(type, String(state.id));
     case 'ticket':
     case 'email':
-      return String(state.subject);
+      return str(state.subject) ?? refDisplay(type, String(state.id));
     case 'message':
-      return `${state.channel} message`;
+      return str(state.channel) ? `${state.channel} message` : refDisplay(type, String(state.id));
     case 'event':
-      return String(state.title);
+      return str(state.title) ?? refDisplay(type, String(state.id));
     case 'credit':
-      return `Credit of ${state.amount}`;
+      return typeof state.amount === 'number'
+        ? `Credit of ${state.amount}`
+        : refDisplay(type, String(state.id));
     default:
       return String(state.id);
   }
 }
 
+/**
+ * How effects, plan steps and graph nodes name an entity: by type and id ("order ord_1001"), the
+ * way the recorder stores `Entity.display` (`displayOf` in packages/core/src/world/types.ts).
+ */
+export const refDisplay = (type: string, key: string) => `${type} ${key}`;
+
 const ref = (type: string, state: EntityState): EntityRef => ({
   type,
   key: String(state.id),
-  display: displayOf(type, state),
+  display: refDisplay(type, String(state.id)),
 });
 
 function text(args: Record<string, unknown>, name: string): string {
@@ -94,15 +107,52 @@ function mentioned(pattern: RegExp, ...sources: string[]): string {
   throw new ToolError(`Expected an id matching ${pattern} in "${sources.join(' ')}"`);
 }
 
-const openTicketOf = (world: WorldReader, customerId: string): EntityState | undefined =>
-  world
+/** Open tickets of a customer (optionally for one order); more than one is ambiguous, as in core. */
+function openTicketOf(
+  world: WorldReader,
+  customerId: string,
+  orderId?: string,
+): EntityState | null {
+  const matches = world
     .all('ticket')
-    .filter((t) => t.customerId === customerId && t.status === 'open')
-    .at(-1);
+    .filter(
+      (t) =>
+        t.status === 'open' &&
+        t.customerId === customerId &&
+        (orderId === undefined || t.orderId === orderId),
+    );
+  if (matches.length > 1) {
+    const ids = matches.map((t) => t.id).join(', ');
+    throw new ToolError(`${customerId} has ${matches.length} open tickets (${ids}); pass ticketId`);
+  }
+  return matches[0] ?? null;
+}
+
+/** The order a call is about: given explicitly, or the one its text mentions; it must be theirs. */
+function orderOf(
+  world: WorldReader,
+  customer: EntityState,
+  args: Record<string, unknown>,
+  ...texts: string[]
+): EntityState {
+  const id = optional(args, 'orderId') ?? mentioned(/ord_\d+/, ...texts);
+  const order = need(world, 'order', id);
+  if (order.customerId !== customer.id) {
+    throw new ToolError(`${id} belongs to ${order.customerId}, not ${customer.id}`);
+  }
+  return order;
+}
 
 const create = (type: string, state: EntityState, kind: 'create' | 'external' = 'create') =>
   ({ kind, entity: ref(type, state), field: null, before: null, after: state }) as EffectDraft;
 
+function optional(args: Record<string, unknown>, name: string): string | undefined {
+  const value = args[name];
+  return typeof value === 'string' && value !== '' ? value : undefined;
+}
+
+// Results, texts and reads below mirror packages/core/src/agents/tools.ops.ts and
+// tools.billing.ts word for word: test/parity.test.ts fails when the two drift apart.
 export const tools: Record<string, ToolSpec> = {
   lookup_order: {
     agentId: 'ops-agent',
@@ -130,15 +180,21 @@ export const tools: Record<string, ToolSpec> = {
     undoMode: 'restore',
     keywords: ['address', 'shipping', 'delivery', 'reroute', 'update_address'],
     run(args, world) {
-      const order = need(world, 'order', text(args, 'orderId'));
+      const orderId = text(args, 'orderId');
+      const order = need(world, 'order', orderId);
       const address = text(args, 'address');
+      const previous = order.address;
+      if (order.status !== 'processing') {
+        throw new ToolError(`${orderId} is already ${order.status}; its address cannot change`);
+      }
+      if (previous === address) throw new ToolError(`${orderId} already ships to ${address}`);
       return {
         result: {
-          orderId: order.id,
-          previousAddress: order.address,
+          orderId,
+          previous,
           address,
-          summary: `Shipping address for ${order.id} changed from ${order.address} to ${address}.`,
-          customerNote: `Your order ${order.id} will now be delivered to ${address}.`,
+          summary: `Shipping address of ${orderId} changed from ${previous} to ${address}`,
+          customerNote: `The delivery address for your order ${orderId} is now ${address}. Reply to this email if that is not right.`,
         },
         reads: [ref('order', order)],
         writes: [
@@ -146,7 +202,7 @@ export const tools: Record<string, ToolSpec> = {
             kind: 'update',
             entity: ref('order', order),
             field: 'address',
-            before: order.address,
+            before: previous,
             after: address,
           },
         ],
@@ -165,7 +221,7 @@ export const tools: Record<string, ToolSpec> = {
       const customer = need(world, 'customer', text(args, 'customerId'));
       const subject = text(args, 'subject');
       const body = text(args, 'body');
-      const order = need(world, 'order', mentioned(/ord_\d+/, subject, body));
+      const order = orderOf(world, customer, args, subject, body);
       const ticket = {
         id: world.nextKey('ticket'),
         customerId: customer.id,
@@ -177,8 +233,12 @@ export const tools: Record<string, ToolSpec> = {
       };
       return {
         result: {
-          ...ticket,
-          announcement: `Order ${order.id} for ${customer.name} was re-routed; tracking in ${ticket.id}.`,
+          id: ticket.id,
+          customerId: ticket.customerId,
+          orderId: ticket.orderId,
+          subject,
+          status: ticket.status,
+          announcement: `Opened ${ticket.id} for ${customer.name} on ${ticket.orderId}: ${subject}`,
         },
         reads: [ref('customer', customer), ref('order', order)],
         writes: [create('ticket', ticket)],
@@ -196,21 +256,24 @@ export const tools: Record<string, ToolSpec> = {
     run(args, world) {
       const channel = text(args, 'channel');
       const body = text(args, 'text');
-      const ticket = need(world, 'ticket', mentioned(/tkt_\d+/, body));
-      const message = { id: world.nextKey('message'), channel, text: body, ticketId: ticket.id };
+      const about = optional(args, 'ticketId') ?? mentioned(/tkt_\d+/, body);
+      const ticket = need(world, 'ticket', about);
+      const message = { id: world.nextKey('message'), channel, text: body, ticketId: about };
+      const writes: EffectDraft[] = [create('message', message)];
+      // The first message starts the ticket's thread; later ones leave it alone.
+      if ((ticket.thread ?? null) === null) {
+        writes.push({
+          kind: 'update',
+          entity: ref('ticket', ticket),
+          field: 'thread',
+          before: null,
+          after: message.id,
+        });
+      }
       return {
-        result: { id: message.id, channel, ticketId: ticket.id },
+        result: { id: message.id, channel, ticketId: about },
         reads: [ref('ticket', ticket)],
-        writes: [
-          create('message', message),
-          {
-            kind: 'update',
-            entity: ref('ticket', ticket),
-            field: 'thread',
-            before: ticket.thread ?? null,
-            after: message.id,
-          },
-        ],
+        writes,
       };
     },
   },
@@ -226,18 +289,24 @@ export const tools: Record<string, ToolSpec> = {
       const customer = need(world, 'customer', text(args, 'to'));
       const subject = text(args, 'subject');
       const body = text(args, 'body');
-      const order = need(world, 'order', mentioned(/ord_\d+/, subject, body));
-      const ticket = openTicketOf(world, String(customer.id));
+      const order = orderOf(world, customer, args, subject, body);
+      const ticket = openTicketOf(world, String(customer.id), String(order.id));
       const email = {
         id: world.nextKey('email'),
         to: customer.id,
         toAddress: customer.email,
         subject,
-        body,
+        body: ticket ? `${body}\n\nReference: ${ticket.id}` : body,
         status: 'sent',
       };
       return {
-        result: { id: email.id, status: email.status, toAddress: email.toAddress },
+        result: {
+          id: email.id,
+          to: email.to,
+          toAddress: email.toAddress,
+          subject,
+          status: email.status,
+        },
         reads: [
           ref('customer', customer),
           ref('order', order),
@@ -256,16 +325,19 @@ export const tools: Record<string, ToolSpec> = {
     undoMode: 'inverse',
     keywords: ['followup', 'follow', 'calendar', 'event', 'reminder', 'schedule_followup'],
     run(args, world) {
-      const ticket = need(world, 'ticket', text(args, 'ticketId'));
+      const ticketId = text(args, 'ticketId');
+      const ticket = need(world, 'ticket', ticketId);
+      if (ticket.status !== 'open') throw new ToolError(`${ticketId} is ${ticket.status}`);
+      const when = text(args, 'when');
       const event = {
         id: world.nextKey('event'),
-        ticketId: ticket.id,
-        title: `Follow up on ${ticket.subject}`,
-        when: text(args, 'when'),
+        ticketId,
+        title: optional(args, 'title') ?? `Follow up: ${ticket.subject}`,
+        when,
         status: 'scheduled',
       };
       return {
-        result: { id: event.id, when: event.when },
+        result: { id: event.id, ticketId, title: event.title, when },
         reads: [ref('ticket', ticket)],
         writes: [create('event', event)],
       };
@@ -317,36 +389,59 @@ export const tools: Record<string, ToolSpec> = {
     undoMode: 'inverse',
     keywords: ['credit', 'refund', 'goodwill', 'apply_credit'],
     run(args, world) {
-      const customer = need(world, 'customer', text(args, 'customerId'));
-      const ticket = openTicketOf(world, String(customer.id));
+      const customerId = text(args, 'customerId');
+      const customer = need(world, 'customer', customerId);
       const amount = Number(args.amount);
       if (!Number.isFinite(amount) || amount <= 0)
         throw new ToolError('Credit amount must be positive');
+      const reason = text(args, 'reason');
+      // A credit always settles a ticket, so it is traceable to the change that caused it.
+      const given = optional(args, 'ticketId');
+      const ticket = given ? need(world, 'ticket', given) : openTicketOf(world, customerId);
+      if (!ticket)
+        throw new ToolError(`${customerId} has no open ticket; a credit must settle one`);
+      if (ticket.customerId !== customerId || ticket.status !== 'open') {
+        throw new ToolError(`${ticket.id} is not an open ticket of ${customerId}`);
+      }
       const credit = {
         id: world.nextKey('credit'),
-        customerId: customer.id,
-        ticketId: ticket?.id ?? null,
+        customerId,
+        ticketId: ticket.id,
         amount,
-        reason: text(args, 'reason'),
+        reason,
         status: 'active',
       };
       return {
-        result: { id: credit.id, amount },
-        reads: [ref('customer', customer), ...(ticket ? [ref('ticket', ticket)] : [])],
+        result: { id: credit.id, customerId, ticketId: credit.ticketId, amount, reason },
+        reads: [ref('customer', customer), ref('ticket', ticket)],
         writes: [create('credit', credit)],
       };
     },
   },
 };
 
-/** The mitigation for a sent email: a correction left as a draft for a human to send. */
-export function correctionDraft(world: WorldReader, sent: EntityState): EffectDraft {
-  return create('email', {
+/**
+ * The mitigation for a sent email (draft_correction_email): a correction to the same recipient,
+ * left as a draft for a human. It reads the email it corrects, as the core tool does.
+ */
+export function correctionDraft(world: WorldReader, sent: EntityState): ToolOutput {
+  const draft = {
     id: world.nextKey('email'),
     to: sent.to,
     toAddress: sent.toAddress,
     subject: `Correction: ${sent.subject}`,
-    body: 'Please disregard our previous email; a teammate will follow up with the correct details.',
+    body: `Our earlier email "${sent.subject}" described a change that has since been reverted, so please disregard it. We will be in touch with the correct details.`,
     status: 'draft',
-  });
+  };
+  return {
+    result: {
+      id: draft.id,
+      corrects: sent.id,
+      to: draft.to,
+      subject: draft.subject,
+      status: draft.status,
+    },
+    reads: [ref('email', sent)],
+    writes: [create('email', draft)],
+  };
 }

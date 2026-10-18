@@ -41,10 +41,18 @@ export type PathView =
   /** The explained action depends on the selected root within the depth: its path. */
   | { kind: 'member'; depth: number; rootId: string; member: ClosureMember }
   /** Something else is selected and this action is not in its closure at that depth. */
-  | { kind: 'outside'; depth: number; rootId: string };
+  | { kind: 'outside'; depth: number; rootId: string }
+  /**
+   * The selection has no plan (already undone, read-only, unknown), so Q1 was never asked and
+   * no path can be shown or denied; the closure's note says why.
+   */
+  | { kind: 'no-plan'; depth: number; note: string };
 
 export function pathView(actionId: string, closure: Closure | null): PathView {
   if (!closure) return { kind: 'no-selection' };
+  if (closure.outcome !== 'plan') {
+    return { kind: 'no-plan', depth: closure.depth, note: closure.note ?? 'No plan to show.' };
+  }
   if (closure.rootId === actionId) {
     return { kind: 'root', depth: closure.depth, members: closure.members };
   }
