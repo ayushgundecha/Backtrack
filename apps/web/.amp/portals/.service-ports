@@ -1,0 +1,5 @@
+{
+  "servicePorts": {
+    "web": 30225
+  }
+}
