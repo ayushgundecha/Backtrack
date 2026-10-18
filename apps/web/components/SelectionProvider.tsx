@@ -22,6 +22,10 @@ interface SelectionValue {
   error: string | null;
   select(actionId: string | null): void;
   setDepth(depth: number): void;
+  /** The action the explain drawer shows; null when it is closed. */
+  explainId: string | null;
+  openExplain(actionId: string): void;
+  closeExplain(): void;
 }
 
 const SelectionContext = createContext<SelectionValue | null>(null);
@@ -43,6 +47,7 @@ export function SelectionProvider({ children }: { children: React.ReactNode }) {
   const [closure, setClosure] = useState<Closure | null>(null);
   const [status, setStatus] = useState<ClosureStatus>('idle');
   const [error, setError] = useState<string | null>(null);
+  const [explainId, setExplainId] = useState<string | null>(null);
   const generation = useRef(0);
   const graphRef = useRef(graph);
   graphRef.current = graph;
@@ -93,15 +98,43 @@ export function SelectionProvider({ children }: { children: React.ReactNode }) {
       });
   }, [actions, selectedId, selectedExists, depth, signature]);
 
-  const select = useCallback((actionId: string | null) => setSelectedId(actionId), []);
+  // While the drawer is open, picking another action in the graph explains that one instead.
+  const select = useCallback((actionId: string | null) => {
+    setSelectedId(actionId);
+    if (actionId) setExplainId((open) => (open ? actionId : open));
+  }, []);
+  const openExplain = useCallback((actionId: string) => setExplainId(actionId), []);
+  const closeExplain = useCallback(() => setExplainId(null), []);
   const setDepth = useCallback(
     (next: number) => setDepthState(Math.min(MAX_DEPTH, Math.max(MIN_DEPTH, Math.round(next)))),
     [],
   );
 
   const value = useMemo<SelectionValue>(
-    () => ({ selectedId, depth, closure, status, error, select, setDepth }),
-    [selectedId, depth, closure, status, error, select, setDepth],
+    () => ({
+      selectedId,
+      depth,
+      closure,
+      status,
+      error,
+      select,
+      setDepth,
+      explainId,
+      openExplain,
+      closeExplain,
+    }),
+    [
+      selectedId,
+      depth,
+      closure,
+      status,
+      error,
+      select,
+      setDepth,
+      explainId,
+      openExplain,
+      closeExplain,
+    ],
   );
   return <SelectionContext value={value}>{children}</SelectionContext>;
 }

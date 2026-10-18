@@ -7,7 +7,7 @@
  * (POST /api/undo → Q1/Q3) and lights exactly what came back; the rest dims to 20 %.
  */
 import type { GraphSnapshot } from '@backtrack/core/contracts';
-import { Play } from 'lucide-react';
+import { Info, Play } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import { useCallback, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
@@ -128,6 +128,9 @@ export function GraphView() {
     if (step) {
       event.preventDefault();
       selection.select(stepSelection(graph, selection.selectedId, step));
+    } else if (event.key === 'Enter' && selection.selectedId) {
+      event.preventDefault();
+      selection.openExplain(selection.selectedId);
     } else if (event.key === 'Escape' && selection.selectedId) {
       event.preventDefault();
       selection.select(null);
@@ -144,7 +147,17 @@ export function GraphView() {
   return (
     <div className="flex flex-col gap-3 lg:h-full">
       {root ? (
-        <BlastChip root={{ tool: root.tool ?? root.title, seq: root.seq }} />
+        <BlastChip root={{ tool: root.tool ?? root.title, seq: root.seq }}>
+          <Button
+            variant="secondary"
+            size="sm"
+            data-explain-keep-open
+            onClick={() => selection.openExplain(root.id)}
+          >
+            <Info aria-hidden />
+            Explain
+          </Button>
+        </BlastChip>
       ) : (
         <p className="rounded-lg border border-dashed px-3 py-2.5 text-fg-muted text-sm">
           Click an action to light up everything that depends on it. With the graph focused, the
@@ -196,7 +209,8 @@ export function GraphView() {
         />
       </div>
       <p id="graph-help" className="sr-only">
-        Arrow keys select the previous or next action by seq. Escape clears the selection.
+        Arrow keys select the previous or next action by seq, Enter explains it, Escape clears the
+        selection.
       </p>
       <p aria-live="polite" className="sr-only">
         {announcement}
