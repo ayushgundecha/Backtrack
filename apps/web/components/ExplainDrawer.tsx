@@ -75,6 +75,9 @@ function useExplain(actionId: string | null): Load | null {
 export function ExplainDrawer() {
   const { explainId, closeExplain } = useSelection();
   const load = useExplain(explainId);
+  // The drawer opens from many places (Explain buttons, the graph, a step card) rather than from a
+  // Radix trigger, so Radix has nowhere to return focus on close. Remember the opener instead.
+  const opener = useRef<HTMLElement | null>(null);
 
   return (
     <Sheet open={explainId !== null} onOpenChange={(open) => !open && closeExplain()} modal={false}>
@@ -83,6 +86,18 @@ export function ExplainDrawer() {
         // Full width on phones, 440 px beside the graph from 640 px. Important beats the base
         // sheet's own data-[side] width rules, which would otherwise win at equal specificity.
         className="w-full! max-w-none! gap-0 sm:w-[440px]! sm:max-w-[440px]!"
+        onOpenAutoFocus={() => {
+          const active = document.activeElement;
+          opener.current =
+            active instanceof HTMLElement && active !== document.body ? active : null;
+        }}
+        onCloseAutoFocus={(event) => {
+          if (opener.current?.isConnected) {
+            event.preventDefault();
+            opener.current.focus();
+          }
+          opener.current = null;
+        }}
         // Clicks on the graph pick another action to explain; they must not close the drawer.
         onInteractOutside={(event) => {
           const target = event.target as Element | null;

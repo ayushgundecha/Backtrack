@@ -36,6 +36,8 @@ interface BacktrackState {
   graph: GraphSnapshot | null;
   world: WorldSnapshot | null;
   connection: Connection;
+  /** Why the last read of graph and world failed (the route's message); null after a good read. */
+  loadError: string | null;
   /** True while an agent run or an undo is streaming. */
   streaming: boolean;
   undoOutcome: UndoOutcome | null;
@@ -63,6 +65,8 @@ interface BacktrackActions {
   explain(actionId: string): Promise<Explain>;
   /** The world right after action `asOfSeq` (time scrubber); the live world is `state.world`. */
   worldAt(asOfSeq: number): Promise<WorldSnapshot>;
+  /** Reads graph and world again, e.g. from an error state's Retry button. */
+  retry(): void;
 }
 
 interface BacktrackMeta {
@@ -120,6 +124,7 @@ export function BacktrackProvider({
   const [graph, setGraph] = useState<GraphSnapshot | null>(null);
   const [world, setWorld] = useState<WorldSnapshot | null>(null);
   const [connection, setConnection] = useState<Connection>('connecting');
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [streaming, setStreaming] = useState(false);
   const [undoOutcome, setUndoOutcome] = useState<UndoOutcome | null>(null);
   const stream = useRef<AbortController | null>(null);
@@ -148,9 +153,11 @@ export function BacktrackProvider({
       setGraph(nextGraph);
       setWorld(nextWorld);
       setConnection('ok');
+      setLoadError(null);
     } catch (error) {
       if (generation !== readGeneration.current) return;
       setConnection('error');
+      setLoadError(messageOf(error));
       toast.error(messageOf(error));
     }
   }, []);
@@ -297,17 +304,22 @@ export function BacktrackProvider({
         if (!client) return Promise.reject(new Error('Not connected yet.'));
         return client.world(asOfSeq);
       },
+      retry() {
+        if (!client) return;
+        setConnection('connecting');
+        void refresh(client);
+      },
     }),
     [client, consume, refresh, askUndo],
   );
 
   const value = useMemo<BacktrackContextValue>(
     () => ({
-      state: { session, graph, world, connection, streaming, undoOutcome },
+      state: { session, graph, world, connection, loadError, streaming, undoOutcome },
       actions,
       meta: { source: client?.kind ?? null, tenant },
     }),
-    [session, graph, world, connection, streaming, undoOutcome, actions, client, tenant],
+    [session, graph, world, connection, loadError, streaming, undoOutcome, actions, client, tenant],
   );
 
   return <BacktrackContext value={value}>{children}</BacktrackContext>;

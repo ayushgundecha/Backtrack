@@ -135,8 +135,22 @@ export function errorResponse(err: unknown): Response {
   }
   if (err instanceof PolicyError) return Response.json({ error: err.message }, { status: 400 });
   console.error(err);
-  const message = err instanceof Error ? err.message : String(err);
-  return Response.json({ error: message }, { status: 500 });
+  return Response.json({ error: errorText(err) }, { status: 500 });
+}
+
+/**
+ * A message worth showing for any thrown value. A refused connection to FalkorDB arrives as an
+ * AggregateError with an empty message (one inner error per address tried), which would leave
+ * the panel with a blank error; the inner messages or the error code say what happened.
+ */
+export function errorText(err: unknown): string {
+  if (!(err instanceof Error)) return String(err);
+  if (err.message) return err.message;
+  if (err instanceof AggregateError && err.errors.length > 0) {
+    return [...new Set(err.errors.map(errorText))].join('; ');
+  }
+  const code = (err as { code?: unknown }).code;
+  return typeof code === 'string' ? `${err.name}: ${code}` : err.name;
 }
 
 export type Emit = (e: RunEvent) => Promise<void>;
@@ -174,7 +188,7 @@ export function sse(
       try {
         await produce(emit, abort.signal);
       } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
+        const message = errorText(err);
         await emit({ type: 'error', runId: null, message });
       } finally {
         clearInterval(timer);
