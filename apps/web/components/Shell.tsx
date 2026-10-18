@@ -5,6 +5,8 @@
  * from 1280 px; graph and run stream at 50 / 50 with the world in a drawer from 1024 px;
  * one stacked column below that, graph first.
  */
+import { RotateCw } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import { useBacktrack } from './BacktrackProvider';
 import { GraphView, graphCounts } from './GraphView';
 import { Pane, PaneBody } from './Pane';
@@ -14,7 +16,9 @@ import { UndoConsole } from './UndoConsole';
 import { WorldPanel } from './WorldPanel';
 
 export function Shell() {
-  const { state } = useBacktrack();
+  const { state, actions, meta } = useBacktrack();
+  // A later read failed but an earlier one succeeded: the panes keep the last good read and say so.
+  const stale = state.loadError !== null && state.graph !== null;
   const counts = graphCounts(state.graph);
   const entities = state.world?.entities.length;
 
@@ -27,6 +31,21 @@ export function Shell() {
         Skip to the panels
       </a>
       <TopBar />
+      {stale ? (
+        <div
+          role="status"
+          className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-b bg-surface-2 px-4 py-2 text-sm"
+        >
+          <span>
+            Showing the last read of bt:{meta.tenant}; the latest read failed:{' '}
+            <span className="font-mono text-code text-fg-muted">{state.loadError}</span>
+          </span>
+          <Button variant="secondary" size="xs" onClick={actions.retry}>
+            <RotateCw aria-hidden />
+            Try again
+          </Button>
+        </div>
+      ) : null}
       <main
         id="main"
         className="grid flex-1 grid-cols-1 lg:min-h-0 lg:grid-cols-2 xl:grid-cols-[minmax(0,2fr)_minmax(0,1.75fr)_minmax(0,1.25fr)]"

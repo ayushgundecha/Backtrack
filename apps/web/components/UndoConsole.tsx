@@ -116,7 +116,8 @@ export function UndoConsole() {
           <label htmlFor="undo-request" className="text-fg-muted text-xs">
             Describe what to undo
           </label>
-          <p className="text-fg-muted text-xs">
+          {/* The shortcut needs a keyboard; on narrow (touch) screens the hint is noise. */}
+          <p className="hidden text-fg-muted text-xs sm:block">
             <kbd className="rounded-sm border bg-surface-2 px-1 font-mono">{shortcut}</kbd> anywhere
             picks the last action
           </p>

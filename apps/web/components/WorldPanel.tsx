@@ -17,6 +17,7 @@ import { useReducedMotion } from '@/lib/use-reduced-motion';
 import { type ActiveFlash, type Flashes, useWorldFlashes } from '@/lib/use-world-flashes';
 import { entityId } from '@/lib/world-diff';
 import { useBacktrack } from './BacktrackProvider';
+import { ErrorState } from './EmptyState';
 
 type WorldEntity = WorldSnapshot['entities'][number];
 
@@ -156,9 +157,19 @@ function announce(flashes: Flashes): string {
 
 /** Body of the world panel, shared by the right column and the 1024–1279 px drawer. */
 export function WorldPanel() {
-  const { state } = useBacktrack();
+  const { state, actions, meta } = useBacktrack();
   const { world } = state;
   const flashes = useWorldFlashes(world, state.session);
+  if (!world && state.loadError) {
+    return (
+      <ErrorState
+        title={`Could not read the world in bt:${meta.tenant}`}
+        message={state.loadError}
+        onRetry={actions.retry}
+        announce={false}
+      />
+    );
+  }
   if (!world) {
     return (
       <div

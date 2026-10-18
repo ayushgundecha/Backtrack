@@ -16,13 +16,16 @@ import { agentName } from '@/lib/tools';
 import { useReducedMotion } from '@/lib/use-reduced-motion';
 import { useBacktrack } from './BacktrackProvider';
 import { BlastChip } from './BlastChip';
-import { EmptyState } from './EmptyState';
+import { EmptyState, ErrorState } from './EmptyState';
 import { useSelection } from './SelectionProvider';
 
 // The library reads `window` on import, so it is loaded in the browser only, in its own chunk.
 const ForceCanvas = dynamic(() => import('./ForceCanvas'), {
   ssr: false,
-  loading: () => <div className="size-full" aria-hidden />,
+  // Until the canvas chunk arrives the box says so instead of standing empty.
+  loading: () => (
+    <p className="grid size-full place-items-center text-fg-muted text-sm">Drawing the graph…</p>
+  ),
 });
 
 /** Counts for the pane header, taken from the snapshot so the number names its source. */
@@ -90,7 +93,17 @@ export function GraphView() {
     [argsById],
   );
 
-  if (!graph || !view) return <Skeleton />;
+  if (!graph || !view) {
+    return state.loadError ? (
+      <ErrorState
+        title={`Could not read the graph bt:${meta.tenant}`}
+        message={state.loadError}
+        onRetry={actions.retry}
+      />
+    ) : (
+      <Skeleton />
+    );
+  }
 
   const actionNodes = view.nodes.filter((n) => n.kind === 'action');
   if (actionNodes.length === 0) {

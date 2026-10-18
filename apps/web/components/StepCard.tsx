@@ -43,7 +43,16 @@ const phaseStatus = {
  * One agent step, filled in as its events arrive: the thought (step), then the tool call and
  * result (action.recorded), or the gate (approval.requested / resolved), or a policy block.
  */
-export function StepCard({ step, actions }: { step: StepView; actions: Map<string, ActionRef> }) {
+export function StepCard({
+  step,
+  actions,
+  ended = false,
+}: {
+  step: StepView;
+  actions: Map<string, ActionRef>;
+  /** The run has finished or failed: a step without a call will not get one. */
+  ended?: boolean;
+}) {
   const { action, approval, blocked } = step;
   const call = stepCall(step);
   const phase = stepPhase(step);
@@ -82,7 +91,9 @@ export function StepCard({ step, actions }: { step: StepView; actions: Map<strin
             ) : null}
           </p>
         ) : (
-          <p className="text-fg-muted text-sm">Waiting for the tool call…</p>
+          <p className="text-fg-muted text-sm">
+            {ended ? 'No tool call was recorded for this step.' : 'Waiting for the tool call…'}
+          </p>
         )}
         {action ? (
           <p className="line-clamp-2 text-fg-muted text-sm">{resultLine(action.result)}</p>

@@ -48,7 +48,12 @@ function RunSection({
       {steps.length > 0 ? (
         <ol className="flex flex-col gap-3">
           {steps.map((step) => (
-            <StepCard key={step.stepId} step={step} actions={actions} />
+            <StepCard
+              key={step.stepId}
+              step={step}
+              actions={actions}
+              ended={run.status === 'done' || run.status === 'failed'}
+            />
           ))}
         </ol>
       ) : null}
@@ -117,7 +122,21 @@ export function RunStream() {
       <p className="sr-only" aria-live="polite">
         {announcement}
       </p>
-      {session.runs.length === 0 && session.errors.length === 0 ? (
+      {session.runs.length === 0 && session.errors.length === 0 && !state.graph ? (
+        // Until the graph is read, "nothing recorded" would be a guess.
+        state.loadError ? (
+          <p className="text-fg-muted text-sm">
+            The graph could not be read, so whether anything is recorded is unknown.
+          </p>
+        ) : (
+          <div
+            role="status"
+            aria-busy="true"
+            aria-label="Reading the graph"
+            className="h-24 rounded-lg border bg-surface-2"
+          />
+        )
+      ) : session.runs.length === 0 && session.errors.length === 0 ? (
         <EmptyState
           title={
             recorded > 0
