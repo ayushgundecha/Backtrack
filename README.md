@@ -26,9 +26,10 @@ Built for **Graph Hacks: Context for AI Agents** (WeMakeDevs × FalkorDB), Oct 1
 
 ## The problem
 
-AI agents now take real actions: they update records, open tickets, post messages, send emails. Two public incidents, Replit (July 2025) and PocketOS (April 2026), share one shape: an agent acted destructively, there was no confirmation step, and there was no clean rollback.
+AI agents now take real actions: they update records, open tickets, post messages, send emails. Two public incidents share one shape: an agent acted destructively with no confirmation step, and recovery came from outside the agent, a whole database at a time.
 
-<!-- TODO(BT-062): link a primary source for each incident -->
+- **Replit, July 2025.** During a declared code freeze, Replit's agent ran destructive commands against a production database, then told its user a rollback was impossible; he restored the database himself with Replit's rollback. ([Jason Lemkin's post](https://x.com/jasonlk/status/1946069562723897802), [The Register](https://www.theregister.com/2025/07/21/replit_saastr_vibe_coding_incident/))
+- **PocketOS, April 2026.** A Cursor agent deleted the company's production Railway volume, and the backups stored on it, in a single API call with a token it found in an unrelated file. The team ran on a three-month-old backup until Railway recovered the data. ([The Register](https://www.theregister.com/software/2026/04/27/cursor-opus-agent-snuffs-out-startups-production-database/5224442))
 
 Existing "rewind" features (LangGraph time travel, Claude Code rewind, AgentRewind, Rubrik Agent Rewind) restore **state**: files, context, snapshots. Sagas (Restate, Temporal) compensate **linearly, on failure, inside one workflow**. Neither answers the question an operator actually has after a bad action:
 
@@ -496,7 +497,29 @@ ORDER BY type, key
 
 <!-- END GENERATED: queries -->
 
-<!-- TODO(BT-062): a screenshot of each query's rows from the demo graph -->
+### What the rows look like
+
+Rows from the demo graph after both golden runs (`pnpm demo:replay --approve --billing`), queried through the catalogue functions on a local Docker FalkorDB. Ids are generated per run; the shapes, orders and paths are what the panel renders. Rows as text rather than screenshots, so they can be searched and diffed.
+
+**Q1 at depth 1 vs depth 3, rooted at `update_address` (seq 2).** Depth 1 returns two direct dependents. Depth 3 adds the ops agent's `post_message` and `schedule_followup` and the billing agent's `apply_credit`, each with the path that reaches it. This is the "same question at depth 1 then depth 3" move from the demo.
+
+| depth | seq | tool | agentId | reversible | hops | via |
+|---|---|---|---|---|---|---|
+| 1 | 5 | `send_email` | ops-agent | false (mitigation `draft_correction_email`) | 1 | update_address → send_email |
+| 1 | 3 | `create_ticket` | ops-agent | true | 1 | update_address → create_ticket |
+| 3 | 9 | `apply_credit` | **billing-agent** | true | 3 | update_address → create_ticket → post_message → apply_credit |
+| 3 | 6 | `schedule_followup` | ops-agent | true | 3 | update_address → create_ticket → post_message → schedule_followup |
+| 3 | 5 | `send_email` | ops-agent | false | 1 | update_address → send_email |
+| 3 | 4 | `post_message` | ops-agent | true | 2 | update_address → create_ticket → post_message |
+| 3 | 3 | `create_ticket` | ops-agent | true | 1 | update_address → create_ticket |
+
+**Q4, the gate, for `send_email` (seq 5):** `update_address` (2), `create_ticket` (3), `post_message` (4). Three rows, so the agent pauses with "would lock in 3 reversible changes: update_address, create_ticket, post_message".
+
+**Q7 at depth 3, rooted at `update_address`:** one row, `billing-agent` · `apply_credit` · 3 hops. That row is the cross-agent line on the plan card.
+
+**Q8, PageRank over `DEPENDS_ON`, top 3:** `update_address` 0.0714, `create_ticket` 0.0632, `post_message` 0.0598. The action everything else rests on ranks first.
+
+Each of these ran in 1–3 ms on the demo graph.
 
 ## Why a graph, not a log
 
@@ -645,7 +668,7 @@ Environment (copy `.env.example` to `.env`):
 | `BACKTRACK_TENANT` | Tenant name; the graph is `bt:<tenant>` (default `demo`) |
 | `OPENROUTER_API_KEY` | Live LLM mode only; replay works without it |
 | `BACKTRACK_MODEL`, `BACKTRACK_MODEL_FALLBACKS` | OpenRouter model and fallbacks |
-| `BACKTRACK_LLM_DAILY_LIMIT` | Daily cap on live LLM runs, counted on the `Meta` node (default 40) |
+| `BACKTRACK_LLM_DAILY_LIMIT` | Daily cap on live-model requests across all tenants, claimed atomically on the `Meta` node of `bt:_budget` (default 40; one run is about 7) |
 | `RESET_TOKEN` | Protects `POST /api/reset` |
 | `NEXT_PUBLIC_MOCK` | `1` runs the web panel against fixtures without a backend |
 
