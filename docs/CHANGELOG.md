@@ -2,6 +2,9 @@
 
 One line per completed task, newest first. Format: `BT-0xx — what changed (how it was verified)`.
 
+- BT-046 — ExplainDrawer: why (Step.thought), what it read and who wrote it, what it changed, DEPENDS_ON out/in, the Q1 path, Cypher with copy (`pnpm test`: explain-view.test.ts; screenshots at 1440/1100/390, inspected)
+- BT-045 — WorldPanel flashes blue on change and green on revert, animates creates/deletes, honours reduced motion (`pnpm test`: world-diff.test.ts incl. a golden run + undo; mid-transition screenshots inspected)
+- BT-042 — force graph (react-force-graph-2d) with agent hulls, BlastChip and depth slider; clicking an action lights its Q1 closure (`pnpm test`: graph-model.test.ts; /perf/graph with 200 nodes on the idle 2-vCPU orb, software canvas: 58.6 fps selected, 55.2 fps while the layout settles)
 - BT-039 — agents/scripted.ts: a scripted model that plays a golden fixture through the real ToolLoopAgent, reading earlier tool results from the prompt to fill `$ref`s (`pnpm test`: scripted.test.ts — live tool loop and replay produce identical DEPENDS_ON edges, gate reasons and world)
 - BT-053 — public-URL hardening: 8 KB body cap and per-field text caps, per-client per-minute rate limits on every writing route (429 + Retry-After), one run or undo at a time per tenant checked in the graph (R9) so it holds across serverless instances; reset stays token-gated (`pnpm test`: limits.test.ts, routes.test.ts 413/400/429/409)
 - BT-044 — UndoConsole, PlanCard and the four outcome cards; Rehearse diff; Confirm ticks advance only on undo.step events; ⌘Z/Ctrl+Z focuses the console outside text fields (`pnpm test`: web reducer/outcome tests; screenshots of each outcome, mid-execution and executed at 1440/1100/390, inspected)
